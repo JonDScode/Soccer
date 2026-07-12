@@ -1,9 +1,11 @@
-"""Soccer Analytics Lab — dashboard.
+"""Soccer Analytics Lab — dashboard bilingüe (ES/EN).
 
-Tres vistas:
-1. Partido a fondo  — event data del Mundial 2022 (StatsBomb): shot map, carrera de xG, redes de pases
+Cuatro vistas:
+1. Partido a fondo  — event data del Mundial 2022 (StatsBomb): shot map, carrera de xG,
+   redes de pases, posesión y análisis por jugador
 2. Torneo 2022      — agregados: mapa de equipos por xG, goleadores vs xG
 3. Mundial 2026     — resultados y goleadores en vivo vía football-data.org (API key gratuita)
+4. Metodología      — de dónde salen los datos, qué es el xG y cómo replicar lo que se ve en TV
 
 Ejecutar:  streamlit run app/streamlit_app.py
 """
@@ -28,6 +30,205 @@ PLOTLY_LAYOUT = dict(
     template="plotly_white", font=dict(color=INK), margin=dict(l=40, r=20, t=50, b=40),
     hovermode="x unified",
 )
+
+# ---------- Textos ES / EN ----------
+
+STR = {
+    "es": {
+        "tabs": [":material/query_stats: Partido a fondo (2022)",
+                 ":material/trophy: Torneo 2022",
+                 ":material/live_tv: Mundial 2026 en vivo",
+                 ":material/menu_book: Metodología"],
+        "match": "Partido", "shots": "Tiros", "stage": "Fase",
+        "pens_note": "El partido se definió por penales; la tanda se excluye de tiros y xG.",
+        "race_title": "Carrera de xG (los puntos son goles)",
+        "minute": "Minuto", "cum_xg": "xG acumulado", "goal": "Gol",
+        "shot_map": "Shot map",
+        "shot_map_cap": "{a} (amarillo) ataca a la derecha · área del punto = xG del tiro · goles rellenos",
+        "networks": "Redes de pases", "possession": "Posesión",
+        "flow_title": "Flujo de posesión por tramos de 5 min (azul = domina {a})",
+        "flow_pct": "% de posesión",
+        "flow_cap": "Posesión aproximada por proporción de pases en cada ventana — el proxy "
+                    "estándar con event data. Las líneas punteadas marcan los goles.",
+        "player_sec": "Análisis por jugador", "player": "Jugador",
+        "m_passes": "Pases", "m_pass_pct": "% pase", "m_key": "Pases clave", "m_shots": "Tiros",
+        "m_goals": "Goles", "m_carries": "Conducciones", "m_dribbles": "Regates",
+        "m_press": "Presiones", "m_recov": "Recuperaciones", "m_assists": "Asistencias",
+        "m_actions": "Acciones",
+        "involvement": "Participación por tramos de 5 min", "actions_y": "Acciones",
+        "map_title": "Mapa del torneo: producción vs concesión de peligro (por 90 min)",
+        "xg_for": "xG a favor por 90'", "xg_against": "xG en contra por 90'",
+        "map_cap": "Arriba-derecha = genera mucho y concede poco. Tamaño del punto = partidos jugados.",
+        "scorers_title": "Goleadores (3+): goles reales vs esperados", "goals_lbl": "Goles",
+        "scorers_cap": "Goles muy por encima del xG = definición excepcional (o suerte); "
+                       "por debajo = mala puntería o mala fortuna.",
+        "wc_intro": "Datos del **Mundial 2026 en curso** vía [football-data.org](https://www.football-data.org/) "
+                    "(free tier, registro gratuito sin tarjeta). Pega tu API key o expórtala como `FOOTBALL_DATA_TOKEN`.",
+        "api_key": "API key",
+        "no_key": "Sin API key no puedo consultar la API. El registro gratuito toma un minuto: "
+                  "https://www.football-data.org/client/register",
+        "api_err": "La API respondió {c}: revisa la key o el rate limit (10 req/min).",
+        "no_matches": "La API no devolvió partidos del Mundial 2026.",
+        "results": "Últimos resultados ({n} jugados)", "upcoming": "Próximos partidos",
+        "date": "fecha", "home": "local", "away": "visitante", "stage_col": "fase",
+        "top_scorers_26": "Goleadores del Mundial 2026",
+        "scorers_fail": "No pude cargar los goleadores (posible rate limit — espera un minuto).",
+        "viz_tr": {"goal": "gol", "miss": "fallo", "completed": "Completado", "failed": "Fallado",
+                   "touches_of": "Toques de", "passes_of": "Pases de", "actions": "acciones",
+                   "attacks_right": "ataca a la derecha",
+                   "until_sub": "hasta la primera sustitución (min {m})"},
+    },
+    "en": {
+        "tabs": [":material/query_stats: Match deep dive (2022)",
+                 ":material/trophy: 2022 Tournament",
+                 ":material/live_tv: 2026 World Cup live",
+                 ":material/menu_book: Methodology"],
+        "match": "Match", "shots": "Shots", "stage": "Stage",
+        "pens_note": "Decided on penalties; the shootout is excluded from shots and xG.",
+        "race_title": "xG race (dots are goals)",
+        "minute": "Minute", "cum_xg": "Cumulative xG", "goal": "Goal",
+        "shot_map": "Shot map",
+        "shot_map_cap": "{a} (yellow) attacks right · dot area = shot xG · goals are filled",
+        "networks": "Pass networks", "possession": "Possession",
+        "flow_title": "Possession flow in 5-min windows (blue = {a} dominates)",
+        "flow_pct": "% possession",
+        "flow_cap": "Possession approximated by pass share per window — the standard proxy "
+                    "with event data. Dotted lines mark goals.",
+        "player_sec": "Player analysis", "player": "Player",
+        "m_passes": "Passes", "m_pass_pct": "Pass %", "m_key": "Key passes", "m_shots": "Shots",
+        "m_goals": "Goals", "m_carries": "Carries", "m_dribbles": "Dribbles",
+        "m_press": "Pressures", "m_recov": "Recoveries", "m_assists": "Assists",
+        "m_actions": "Actions",
+        "involvement": "Involvement per 5-min window", "actions_y": "Actions",
+        "map_title": "Tournament map: danger created vs conceded (per 90 min)",
+        "xg_for": "xG for per 90'", "xg_against": "xG against per 90'",
+        "map_cap": "Top-right = creates a lot, concedes little. Dot size = matches played.",
+        "scorers_title": "Top scorers (3+): actual vs expected goals", "goals_lbl": "Goals",
+        "scorers_cap": "Goals well above xG = exceptional finishing (or luck); "
+                       "below = poor finishing or bad luck.",
+        "wc_intro": "Data from the **ongoing 2026 World Cup** via [football-data.org](https://www.football-data.org/) "
+                    "(free tier, free signup, no card). Paste your API key or export it as `FOOTBALL_DATA_TOKEN`.",
+        "api_key": "API key",
+        "no_key": "I need an API key to query the API. Free signup takes a minute: "
+                  "https://www.football-data.org/client/register",
+        "api_err": "API returned {c}: check your key or the rate limit (10 req/min).",
+        "no_matches": "The API returned no 2026 World Cup matches.",
+        "results": "Latest results ({n} played)", "upcoming": "Upcoming matches",
+        "date": "date", "home": "home", "away": "away", "stage_col": "stage",
+        "top_scorers_26": "2026 World Cup top scorers",
+        "scorers_fail": "Could not load scorers (possible rate limit — wait a minute).",
+        "viz_tr": {"goal": "goal", "miss": "miss", "completed": "Completed", "failed": "Failed",
+                   "touches_of": "Touches by", "passes_of": "Passes by", "actions": "actions",
+                   "attacks_right": "attacks right",
+                   "until_sub": "until first substitution (min {m})"},
+    },
+}
+
+METODOLOGIA_ES = """
+## ¿De dónde salen los datos de fútbol?
+
+| Tipo de dato | Cómo se produce | Quién lo hace |
+|---|---|---|
+| **Event data** (pases, tiros, duelos con coordenadas) | Codificadores humanos viendo el video con software de tagging: 2.000-3.500 eventos por partido, cada vez más asistido por IA | Opta (Stats Perform), StatsBomb/Hudl |
+| **Tracking data** (posición de los 22 + balón, 25 veces/seg) | Sistemas multicámara en el estadio, o visión por computador sobre la señal de TV | TRACAB, Second Spectrum, SkillCorner |
+| **Datos físicos** (distancias, sprints, cargas) | Chalecos GPS de 10 Hz con acelerómetro | Catapult, STATSports, WIMU |
+
+Este dashboard usa **event data abierto de StatsBomb** (Mundial 2022 completo, tiro a tiro) y la **API gratuita de football-data.org** para el Mundial 2026.
+
+## ¿Qué es el xG y cómo funciona?
+
+El **xG (expected goals, goles esperados)** es la probabilidad —entre 0 y 1— de que un tiro concreto termine en gol, estimada **antes de saber el resultado del tiro**.
+
+**Cómo se construye:** se toman cientos de miles de tiros históricos y se entrena un modelo de clasificación (regresión logística o gradient boosting) que aprende qué proporción de tiros similares terminó en gol. Las variables típicas:
+
+- **Distancia** al arco y **ángulo** visible entre los postes (las dos que más pesan)
+- Parte del cuerpo (pie vs cabeza), tipo de jugada (juego abierto, contragolpe, balón parado, penal)
+- Tipo de asistencia previa (centro, pase raso, balón dividido)
+- En modelos avanzados: presión del defensor y posición del portero (requiere datos 360/tracking)
+
+**Valores de referencia:** un penal ≈ 0.78 (históricamente se convierte el 78%) · mano a mano en el área chica ≈ 0.3-0.6 · tiro desde fuera del área ≈ 0.03-0.06. El xG medio de *todos* los tiros ronda 0.10: solo 1 de cada 10 tiros es gol.
+
+**Cómo se lee:**
+- **Por partido**: sumar el xG de cada equipo dice quién generó más peligro real, más allá del marcador (un 1-0 con xG 0.4 - 2.1 fue un robo). Es la base de la "carrera de xG" de la pestaña 1.
+- **Por jugador**: comparar goles reales vs xG acumulado separa a los definidores de élite de los que tuvieron suerte. Mbappé 2022: 8 goles con 4.2 xG = definición excepcional.
+- **Por qué importa**: el xG es más **repetible** que los goles — predice el rendimiento futuro mejor que los goles pasados, por eso los clubes fichan con xG y no con goles.
+
+**Limitaciones honestas:** no sabe quién patea (el modelo básico le da el mismo xG a Messi que a un defensa central), la suma por partido ignora que los tiros no son independientes, y modelos de distintos proveedores dan números distintos (no compares xG de Opta con xG de StatsBomb).
+
+**En este proyecto:** usamos el xG oficial de StatsBomb (incluido en su event data), y el generador sintético (`scripts/generate_synthetic.py`) implementa un mini-modelo logístico de distancia y ángulo — el esqueleto de cualquier modelo de xG real. La Fase 2 del roadmap es entrenar el nuestro y compararlo.
+
+## Lo que ves en la TV del Mundial 2026 vs lo que replicamos aquí
+
+| Análisis en TV | Dato que lo alimenta en 2026 | Aquí |
+|---|---|---|
+| Posesión oficial | Tracking óptico de FIFA (tiempo real de control del balón) | Proporción de pases por ventana de 5 min — correlaciona >0.95 |
+| xG y carrera de xG | Modelos sobre millones de tiros (Opta/StatsBomb) | xG oficial de StatsBomb (event data abierto) |
+| Mapas de toques/pases por jugador | Event data | Idéntico |
+| Redes de pases y formaciones | Event data + alineaciones | Idéntico |
+| Distancias, velocidades, sprints | Tracking óptico + GPS | **Requiere tracking** — muestras gratis: Metrica, SkillCorner |
+| Rupturas de línea, presión, espacios | FIFA Football Intelligence sobre tracking con esqueleto | Fase avanzada: pitch control con sample de Metrica |
+
+**Regla general:** si el análisis es *dónde ocurrió una acción con balón* → event data (lo tenemos). Si es *dónde estaban los otros 21* o *cuánto corrió alguien* → tracking (solo muestras abiertas).
+
+## ¿Dónde ver stats públicas del Mundial 2026 y la API es gratis?
+
+- **Sitios públicos con stats del 2026** (sin registro): [FBref](https://fbref.com/en/comps/1/World-Cup-Stats) (stats básicas), FOX Sports (xG por equipo), xGscore y FootyStats (xG por partido), FotMob y SofaScore (apps, muy completas).
+- **La API de football-data.org es gratuita**: registro en 1 minuto, sin tarjeta, key por email. El free tier (10 req/min) incluye el Mundial: resultados, calendario, tablas y goleadores. Lo que NO incluye gratis: minuto a minuto en vivo y estadísticas finas (son add-ons de pago). Alternativa gratuita: API-Football (100 req/día).
+- **Event data tiro a tiro del 2026**: aún no es público. StatsBomb suele liberar los Mundiales meses después de la final — cuando pase, este dashboard lo absorbe cambiando dos IDs (`competition_id`/`season_id`).
+"""
+
+METODOLOGIA_EN = """
+## Where does football data come from?
+
+| Data type | How it is produced | Who makes it |
+|---|---|---|
+| **Event data** (passes, shots, duels with coordinates) | Human coders tagging video: 2,000-3,500 events per match, increasingly AI-assisted | Opta (Stats Perform), StatsBomb/Hudl |
+| **Tracking data** (all 22 players + ball, 25 fps) | Multi-camera stadium systems, or computer vision on the broadcast feed | TRACAB, Second Spectrum, SkillCorner |
+| **Physical data** (distances, sprints, load) | 10 Hz GPS vests with accelerometer | Catapult, STATSports, WIMU |
+
+This dashboard uses **StatsBomb open event data** (full 2022 World Cup, shot by shot) and the **free football-data.org API** for the 2026 World Cup.
+
+## What is xG and how does it work?
+
+**xG (expected goals)** is the probability — between 0 and 1 — that a given shot ends up as a goal, estimated **before knowing the outcome**.
+
+**How it is built:** take hundreds of thousands of historical shots and train a classification model (logistic regression or gradient boosting) that learns what share of similar shots were scored. Typical features:
+
+- **Distance** to goal and visible **angle** between the posts (the two heaviest)
+- Body part (foot vs header), play pattern (open play, counter, set piece, penalty)
+- Assist type (cross, through ball, loose ball)
+- Advanced models: defender pressure and goalkeeper position (needs 360/tracking data)
+
+**Reference values:** a penalty ≈ 0.78 (78% historical conversion) · one-on-one in the six-yard box ≈ 0.3-0.6 · shot from outside the box ≈ 0.03-0.06. The average shot is worth ≈ 0.10: only 1 in 10 shots scores.
+
+**How to read it:**
+- **Per match**: summing each team's xG tells you who created real danger regardless of the score (a 1-0 with xG 0.4 - 2.1 was a heist). This powers the xG race in tab 1.
+- **Per player**: actual goals vs cumulative xG separates elite finishers from lucky ones. Mbappé 2022: 8 goals on 4.2 xG = exceptional finishing.
+- **Why it matters**: xG is more **repeatable** than goals — it predicts future output better than past goals do, which is why clubs scout on xG.
+
+**Honest limitations:** it does not know who is shooting (a basic model gives Messi and a centre-back the same xG), summing per match ignores that shots are not independent, and different providers' models disagree (never compare Opta xG with StatsBomb xG).
+
+**In this project:** we use StatsBomb's official xG (included in their event data), and the synthetic generator (`scripts/generate_synthetic.py`) implements a mini logistic model of distance and angle — the skeleton of any real xG model. Roadmap Phase 2 is training our own and benchmarking it.
+
+## What you see on 2026 World Cup TV vs what we replicate here
+
+| TV analysis | Data behind it in 2026 | Here |
+|---|---|---|
+| Official possession | FIFA optical tracking (real ball-control time) | Pass share per 5-min window — correlates >0.95 |
+| xG and xG race | Models trained on millions of shots (Opta/StatsBomb) | StatsBomb official xG (open event data) |
+| Player touch/pass maps | Event data | Identical |
+| Pass networks and formations | Event data + lineups | Identical |
+| Distances, speeds, sprints | Optical tracking + GPS | **Needs tracking** — free samples: Metrica, SkillCorner |
+| Line breaks, pressure, space creation | FIFA Football Intelligence on skeletal tracking | Advanced phase: pitch control with the Metrica sample |
+
+**Rule of thumb:** if the analysis is about *where an on-ball action happened* → event data (we have it). If it is about *where the other 21 players were* or *how much someone ran* → tracking (open samples only).
+
+## Where to find public 2026 stats — and is the API really free?
+
+- **Public sites with 2026 stats** (no signup): [FBref](https://fbref.com/en/comps/1/World-Cup-Stats) (basic stats), FOX Sports (team xG), xGscore and FootyStats (per-match xG), FotMob and SofaScore (apps, very complete).
+- **The football-data.org API is free**: 1-minute signup, no card, key by email. The free tier (10 req/min) covers the World Cup: results, fixtures, standings and scorers. NOT included for free: live minute-by-minute and fine-grained stats (paid add-ons). Free alternative: API-Football (100 req/day).
+- **Shot-by-shot 2026 event data**: not public yet. StatsBomb usually releases World Cups months after the final — when it lands, this dashboard absorbs it by changing two IDs (`competition_id`/`season_id`).
+"""
 
 
 # ---------- Carga de datos (cacheada) ----------
@@ -63,58 +264,61 @@ def fd_api(path: str, token: str) -> dict:
 
 # ---------- Tab 1: Partido a fondo ----------
 
-def tab_match():
+def tab_match(t: dict):
     m = matches()
     m["label"] = m.stage + " · " + m.home_team + " " + m.home_score.astype(str) \
         + "-" + m.away_score.astype(str) + " " + m.away_team
-    label = st.selectbox("Partido", m.label, index=len(m) - 1)
+    label = st.selectbox(t["match"], m.label, index=len(m) - 1)
     row = m[m.label == label].iloc[0]
     team_a, team_b = row.home_team, row.away_team
 
     s = shots()[shots().match_id == row.match_id]
     if (s.period == 5).any():
-        st.caption("El partido se definió por penales; la tanda se excluye de tiros y xG.")
+        st.caption(t["pens_note"])
     s = s[s.period < 5]  # la tanda de penales no cuenta en las estadísticas del partido
     xg_a, xg_b = s[s.team == team_a].xg.sum(), s[s.team == team_b].xg.sum()
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(team_a, row.home_score, f"xG {xg_a:.2f}", delta_color="off")
     c2.metric(team_b, row.away_score, f"xG {xg_b:.2f}", delta_color="off")
-    c3.metric("Tiros", f"{(s.team == team_a).sum()} - {(s.team == team_b).sum()}")
-    c4.metric("Fase", row.stage)
+    c3.metric(t["shots"], f"{(s.team == team_a).sum()} - {(s.team == team_b).sum()}")
+    c4.metric(t["stage"], row.stage)
 
-    # Carrera de xG: cuánta "producción de peligro" acumuló cada equipo minuto a minuto
+    # Carrera de xG
     fig = go.Figure()
     for team, color in ((team_a, BLUE), (team_b, ORANGE)):
-        t = s[s.team == team].sort_values(["period", "minute"])
-        x = [0] + t.minute.tolist()
-        y = [0] + t.xg.cumsum().round(3).tolist()
+        tt = s[s.team == team].sort_values(["period", "minute"])
+        x = [0] + tt.minute.tolist()
+        y = [0] + tt.xg.cumsum().round(3).tolist()
         fig.add_trace(go.Scatter(x=x, y=y, name=team, mode="lines",
                                  line=dict(color=color, width=2, shape="hv")))
-        g = t[t.is_goal]
+        g = tt[tt.is_goal]
         fig.add_trace(go.Scatter(
-            x=g.minute, y=t.xg.cumsum()[g.index].round(3), mode="markers",
+            x=g.minute, y=tt.xg.cumsum()[g.index].round(3), mode="markers",
             marker=dict(color=color, size=11, symbol="circle", line=dict(color=INK, width=1)),
-            name=f"Gol {team}", text=g.player.map(lambda p: nicknames().get(p, p)),
-            hovertemplate="Gol: %{text} %{x}'<extra></extra>"))
-    fig.update_layout(title="Carrera de xG (los puntos son goles)",
-                      xaxis_title="Minuto", yaxis_title="xG acumulado", **PLOTLY_LAYOUT)
+            name=f"{t['goal']} {team}", text=g.player.map(lambda p: nicknames().get(p, p)),
+            hovertemplate=t["goal"] + ": %{text} %{x}'<extra></extra>"))
+    fig.update_layout(title=t["race_title"], xaxis_title=t["minute"],
+                      yaxis_title=t["cum_xg"], **PLOTLY_LAYOUT)
     st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("Shot map")
-    st.caption(f"{team_a} ataca a la derecha · área del punto = xG del tiro · goles rellenos")
-    st.pyplot(viz.shot_map_fig(s, team_a, team_b, nicks=nicknames()), use_container_width=True)
+    st.subheader(t["shot_map"])
+    st.caption(t["shot_map_cap"].format(a=team_a))
+    st.pyplot(viz.shot_map_fig(s, team_a, team_b, nicks=nicknames(), tr=t["viz_tr"]),
+              use_container_width=True)
 
-    st.subheader("Redes de pases")
+    st.subheader(t["networks"])
     ev = events(int(row.match_id))
     col1, col2 = st.columns(2)
     with col1:
-        st.pyplot(viz.pass_network_fig(ev, team_a, BLUE, nicks=nicknames()), use_container_width=True)
+        st.pyplot(viz.pass_network_fig(ev, team_a, viz.PITCH_A, nicks=nicknames(),
+                                       tr=t["viz_tr"]), use_container_width=True)
     with col2:
-        st.pyplot(viz.pass_network_fig(ev, team_b, ORANGE, nicks=nicknames()), use_container_width=True)
+        st.pyplot(viz.pass_network_fig(ev, team_b, viz.PITCH_B, nicks=nicknames(),
+                                       tr=t["viz_tr"]), use_container_width=True)
 
     # ---- Posesión ----
-    st.subheader("Posesión")
+    st.subheader(t["possession"])
     pos_a = metrics.possession_share(ev, team_a)
     c1, c2 = st.columns(2)
     c1.metric(team_a, f"{pos_a:.0f}%")
@@ -131,77 +335,62 @@ def tab_match():
                       annotation_text=viz.short_name(g.player, nicknames()),
                       annotation_font_size=9, annotation_position="top")
     fig.add_hline(y=50, line=dict(color=MUTED, width=1))
-    fig.update_layout(title=f"Flujo de posesión por tramos de 5 min (azul = domina {team_a})",
-                      xaxis_title="Minuto", yaxis_title="% de posesión",
+    fig.update_layout(title=t["flow_title"].format(a=team_a),
+                      xaxis_title=t["minute"], yaxis_title=t["flow_pct"],
                       yaxis=dict(range=[0, 100]), height=340,
                       **{**PLOTLY_LAYOUT, "hovermode": "closest"})
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("Posesión aproximada por proporción de pases en cada ventana — el proxy estándar "
-               "con event data. Las líneas punteadas marcan los goles.")
+    st.caption(t["flow_cap"])
 
     # ---- Jugador a jugador ----
-    st.subheader("Análisis por jugador")
+    st.subheader(t["player_sec"])
     players = (ev[ev.player_name.notna()].groupby("player_name")
                .agg(team=("team_name", "first"), n=("player_name", "size"))
                .sort_values(["team", "n"], ascending=[True, False]))
-    player = st.selectbox("Jugador", players.index,
+    player = st.selectbox(t["player"], players.index,
                           format_func=lambda p: f"{nicknames().get(p, p)} ({players.loc[p, 'team']})")
     display = nicknames().get(player, player)
-    color = BLUE if players.loc[player, "team"] == team_a else ORANGE
+    color = viz.PITCH_A if players.loc[player, "team"] == team_a else viz.PITCH_B
 
     ps = metrics.player_match_stats(ev, player)
     r1 = st.columns(6)
-    r1[0].metric("Pases", f"{ps['pases_completados']}/{ps['pases']}")
-    r1[1].metric("% pase", f"{ps['pct_pase']:.0f}%")
-    r1[2].metric("Pases clave", ps["pases_clave"])
-    r1[3].metric("Tiros", ps["tiros"])
+    r1[0].metric(t["m_passes"], f"{ps['pases_completados']}/{ps['pases']}")
+    r1[1].metric(t["m_pass_pct"], f"{ps['pct_pase']:.0f}%")
+    r1[2].metric(t["m_key"], ps["pases_clave"])
+    r1[3].metric(t["m_shots"], ps["tiros"])
     r1[4].metric("xG", ps["xg"])
-    r1[5].metric("Goles", ps["goles"])
+    r1[5].metric(t["m_goals"], ps["goles"])
     r2 = st.columns(6)
-    r2[0].metric("Conducciones", ps["conducciones"])
-    r2[1].metric("Regates", ps["regates"])
-    r2[2].metric("Presiones", ps["presiones"])
-    r2[3].metric("Recuperaciones", ps["recuperaciones"])
-    r2[4].metric("Asistencias", ps["asistencias"])
-    r2[5].metric("Acciones", ps["acciones"])
+    r2[0].metric(t["m_carries"], ps["conducciones"])
+    r2[1].metric(t["m_dribbles"], ps["regates"])
+    r2[2].metric(t["m_press"], ps["presiones"])
+    r2[3].metric(t["m_recov"], ps["recuperaciones"])
+    r2[4].metric(t["m_assists"], ps["asistencias"])
+    r2[5].metric(t["m_actions"], ps["acciones"])
 
     col1, col2 = st.columns(2)
     with col1:
-        st.pyplot(viz.touch_map_fig(ev, player, color, display_name=display), use_container_width=True)
+        st.pyplot(viz.touch_map_fig(ev, player, color, display_name=display, tr=t["viz_tr"]),
+                  use_container_width=True)
     with col2:
-        st.pyplot(viz.pass_map_fig(ev, player, color, display_name=display), use_container_width=True)
+        st.pyplot(viz.pass_map_fig(ev, player, color, display_name=display, tr=t["viz_tr"]),
+                  use_container_width=True)
 
     act = metrics.player_activity(ev, player)
-    fig = go.Figure(go.Bar(x=act.tbin + 2.5, y=act.acciones, width=4.6, marker_color=color,
-                           hovertemplate="min %{x:.0f}: %{y} acciones<extra></extra>"))
-    fig.update_layout(title="Participación por tramos de 5 min",
-                      xaxis_title="Minuto", yaxis_title="Acciones", height=300,
+    fig = go.Figure(go.Bar(x=act.tbin + 2.5, y=act.acciones, width=4.6, marker_color=BLUE,
+                           hovertemplate="min %{x:.0f}: %{y}<extra></extra>"))
+    fig.update_layout(title=t["involvement"], xaxis_title=t["minute"],
+                      yaxis_title=t["actions_y"], height=300,
                       **{**PLOTLY_LAYOUT, "hovermode": "closest"})
     st.plotly_chart(fig, use_container_width=True)
-
-    with st.expander("¿Con qué datos se hacen estos análisis (y los del Mundial 2026)?"):
-        st.markdown("""
-| Análisis que ves en la TV | Dato que lo alimenta en 2026 | Cómo lo replicamos aquí |
-|---|---|---|
-| Posesión oficial | Tracking óptico de FIFA (cámaras dedicadas siguiendo balón y 22 jugadores) que mide tiempo real de control | Proporción de pases por ventana de 5 min (event data) — correlaciona >0.95 con la oficial |
-| xG del partido y carrera de xG | Modelos entrenados sobre millones de tiros (Opta/StatsBomb) | xG oficial de StatsBomb incluido en su event data abierto |
-| Mapas de toques y pases por jugador | Event data (cada acción con coordenadas, codificada por humanos + IA) | Idéntico — mismo tipo de dato, StatsBomb Open Data |
-| Redes de pases y formaciones | Event data + alineaciones | Idéntico |
-| Distancia recorrida, velocidades, sprints | Tracking óptico + GPS en el chaleco de cada jugador | **No replicable con event data** — requiere tracking (muestras gratis: Metrica Sports, SkillCorner) |
-| "Rupturas de línea", presión, espacios generados | Métricas de la FIFA Football Intelligence sobre tracking con esqueleto (limb tracking) | Fase avanzada del roadmap: pitch control con el sample de Metrica |
-
-**La regla general**: si el análisis es *dónde ocurrió una acción con balón* → event data (lo tenemos).
-Si es *dónde estaban los otros 21 jugadores* o *cuánto corrió alguien* → tracking (solo muestras abiertas).
-""")
 
 
 # ---------- Tab 2: Torneo 2022 ----------
 
-def tab_tournament():
+def tab_tournament(t: dict):
     # las tandas de penales (period 5) no cuentan como tiros ni goles en las stats oficiales
     s, m = shots().query("period < 5"), matches()
 
-    # xG a favor / en contra por equipo
     xg_for = s.groupby("team").xg.sum()
     against = []
     for _, r in m.iterrows():
@@ -218,51 +407,47 @@ def tab_tournament():
         x=teams.xg_for_90, y=teams.xg_against_90, mode="markers+text",
         text=teams.index, textposition="top center", textfont=dict(size=9, color=MUTED),
         marker=dict(color=BLUE, size=teams.pj * 1.6 + 4, line=dict(color="white", width=1)),
-        hovertemplate="<b>%{text}</b><br>xG a favor/90: %{x:.2f}<br>xG en contra/90: %{y:.2f}<extra></extra>"))
+        hovertemplate="<b>%{text}</b><br>" + t["xg_for"] + ": %{x:.2f}<br>"
+                      + t["xg_against"] + ": %{y:.2f}<extra></extra>"))
     fig.add_hline(y=teams.xg_against_90.median(), line=dict(color=MUTED, dash="dot", width=1))
     fig.add_vline(x=teams.xg_for_90.median(), line=dict(color=MUTED, dash="dot", width=1))
-    fig.update_layout(title="Mapa del torneo: producción vs concesión de peligro (por 90 min)",
-                      xaxis_title="xG a favor por 90'", yaxis_title="xG en contra por 90'",
+    fig.update_layout(title=t["map_title"], xaxis_title=t["xg_for"], yaxis_title=t["xg_against"],
                       height=560, **{**PLOTLY_LAYOUT, "hovermode": "closest"})
     fig.update_yaxes(autorange="reversed")  # arriba = conceder poco (mejor)
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("Arriba-derecha = genera mucho y concede poco. Tamaño del punto = partidos jugados.")
+    st.caption(t["map_cap"])
 
-    # Goleadores: goles vs xG
     players = (s.groupby("player").agg(goles=("is_goal", "sum"), xg=("xg", "sum"),
                                        tiros=("xg", "size"), equipo=("team", "first"))
                .query("goles >= 3").sort_values("goles", ascending=False))
     players.index = [nicknames().get(p, p) for p in players.index]
     fig2 = go.Figure()
-    fig2.add_trace(go.Bar(x=players.index, y=players.goles, name="Goles", marker_color=BLUE))
+    fig2.add_trace(go.Bar(x=players.index, y=players.goles, name=t["goals_lbl"], marker_color=BLUE))
     fig2.add_trace(go.Bar(x=players.index, y=players.xg.round(2), name="xG", marker_color=ORANGE))
-    fig2.update_layout(title="Goleadores (3+): goles reales vs esperados",
-                       barmode="group", bargap=0.25,
+    fig2.update_layout(title=t["scorers_title"], barmode="group", bargap=0.25,
                        **{**PLOTLY_LAYOUT, "hovermode": "x"})
     st.plotly_chart(fig2, use_container_width=True)
-    st.caption("Goles muy por encima del xG = definición excepcional (o suerte); por debajo = mala puntería o mala fortuna.")
+    st.caption(t["scorers_cap"])
 
 
 # ---------- Tab 3: Mundial 2026 en vivo ----------
 
-def tab_worldcup_2026():
-    st.markdown(
-        "Datos del **Mundial 2026 en curso** vía [football-data.org](https://www.football-data.org/) "
-        "(free tier). Regístrate gratis y pega tu API key — o expórtala como `FOOTBALL_DATA_TOKEN`.")
-    token = os.getenv("FOOTBALL_DATA_TOKEN") or st.text_input("API key", type="password")
+def tab_worldcup_2026(t: dict):
+    st.markdown(t["wc_intro"])
+    token = os.getenv("FOOTBALL_DATA_TOKEN") or st.text_input(t["api_key"], type="password")
     if not token:
-        st.info("Sin API key no puedo consultar la API. El registro gratuito toma un minuto.")
+        st.info(t["no_key"])
         return
 
     try:
         data = fd_api("/competitions/WC/matches", token)
     except requests.HTTPError as e:
-        st.error(f"La API respondió {e.response.status_code}: revisa la key o el rate limit (10 req/min).")
+        st.error(t["api_err"].format(c=e.response.status_code))
         return
 
     ms = pd.json_normalize(data.get("matches", []), sep="_")
     if ms.empty:
-        st.warning("La API no devolvió partidos del Mundial 2026.")
+        st.warning(t["no_matches"])
         return
     ms["fecha"] = pd.to_datetime(ms.utcDate).dt.strftime("%Y-%m-%d %H:%M")
     ms["marcador"] = ms.score_fullTime_home.astype("Int64").astype(str) + " - " \
@@ -273,43 +458,51 @@ def tab_worldcup_2026():
 
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader(f"Últimos resultados ({len(played)} jugados)")
+        st.subheader(t["results"].format(n=len(played)))
         st.dataframe(played.sort_values("utcDate", ascending=False)
                      [["fecha", "stage", "homeTeam_name", "marcador", "awayTeam_name"]]
-                     .rename(columns={"homeTeam_name": "local", "awayTeam_name": "visitante",
-                                      "stage": "fase"}).head(15),
-                     use_container_width=True, hide_index=True)
+                     .rename(columns={"fecha": t["date"], "homeTeam_name": t["home"],
+                                      "awayTeam_name": t["away"], "stage": t["stage_col"]})
+                     .head(15), use_container_width=True, hide_index=True)
     with c2:
-        st.subheader("Próximos partidos")
+        st.subheader(t["upcoming"])
         st.dataframe(upcoming.sort_values("utcDate")
                      [["fecha", "stage", "homeTeam_name", "awayTeam_name"]]
-                     .rename(columns={"homeTeam_name": "local", "awayTeam_name": "visitante",
-                                      "stage": "fase"}).head(15),
-                     use_container_width=True, hide_index=True)
+                     .rename(columns={"fecha": t["date"], "homeTeam_name": t["home"],
+                                      "awayTeam_name": t["away"], "stage": t["stage_col"]})
+                     .head(15), use_container_width=True, hide_index=True)
 
     try:
         scorers = fd_api("/competitions/WC/scorers?limit=15", token)
         sc = pd.json_normalize(scorers.get("scorers", []), sep="_")
         if not sc.empty:
-            st.subheader("Goleadores del Mundial 2026")
+            st.subheader(t["top_scorers_26"])
             fig = go.Figure(go.Bar(
                 x=sc.player_name, y=sc.goals, marker_color=BLUE,
-                text=sc.team_name, hovertemplate="<b>%{x}</b> (%{text})<br>%{y} goles<extra></extra>"))
-            fig.update_layout(yaxis_title="Goles", **{**PLOTLY_LAYOUT, "hovermode": "x"})
+                text=sc.team_name,
+                hovertemplate="<b>%{x}</b> (%{text})<br>%{y}<extra></extra>"))
+            fig.update_layout(yaxis_title=t["goals_lbl"], **{**PLOTLY_LAYOUT, "hovermode": "x"})
             st.plotly_chart(fig, use_container_width=True)
     except requests.HTTPError:
-        st.caption("No pude cargar los goleadores (posible rate limit — espera un minuto).")
+        st.caption(t["scorers_fail"])
 
 
 # ---------- Layout ----------
 
+lang_col, _ = st.columns([1, 4])
+with lang_col:
+    lang = st.radio("Idioma / Language", ["Español", "English"], horizontal=True,
+                    label_visibility="collapsed")
+LANG = "es" if lang == "Español" else "en"
+T = STR[LANG]
+
 st.title("Soccer Analytics Lab")
-t1, t2, t3 = st.tabs([":material/query_stats: Partido a fondo (2022)",
-                      ":material/trophy: Torneo 2022",
-                      ":material/live_tv: Mundial 2026 en vivo"])
+t1, t2, t3, t4 = st.tabs(T["tabs"])
 with t1:
-    tab_match()
+    tab_match(T)
 with t2:
-    tab_tournament()
+    tab_tournament(T)
 with t3:
-    tab_worldcup_2026()
+    tab_worldcup_2026(T)
+with t4:
+    st.markdown(METODOLOGIA_ES if LANG == "es" else METODOLOGIA_EN)
