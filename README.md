@@ -67,4 +67,4 @@ python scripts/download_statsbomb.py --sample 5
 python scripts/generate_synthetic.py --seasons 3 --seed 42
 ```
 
-Ver [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) para el catálogo completo de fuentes y [docs/ROADMAP.md](docs/ROADMAP.md) para el plan del proyecto.
+Ver [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) para el catálogo completo de fuentes, [docs/ROADMAP.md](docs/ROADMAP.md) para el plan del proyecto, y [docs/DATOS_CLUB_PEQUENO.md](docs/DATOS_CLUB_PEQUENO.md) para cómo se genera el dato profesional y cómo replicarlo en un club amateur con poco presupuesto.
