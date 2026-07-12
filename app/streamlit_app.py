@@ -64,7 +64,16 @@ STR = {
         "stages_sb": {"Round of 32": "Dieciseisavos", "Round of 16": "Octavos",
                       "Quarter-finals": "Cuartos", "Semi-finals": "Semifinales",
                       "3rd Place Final": "3er puesto", "Final": "Final",
-                      "Second Group Stage": "2ª fase de grupos", "Play-offs": "Repechaje"},
+                      "Second Group Stage": "2ª fase de grupos", "Play-offs": "Repechaje",
+                      "Group Stage": "Fase de grupos",
+                      "group stage": "Fase de grupos", "first group stage": "1ª fase de grupos",
+                      "second group stage": "2ª fase de grupos", "first round": "1ª ronda",
+                      "second round": "2ª ronda", "final round": "Ronda final",
+                      "round of 16": "Octavos", "quarter-finals": "Cuartos",
+                      "semi-finals": "Semifinales", "third-place match": "3er puesto",
+                      "final": "Final"},
+        "results_only": "Este torneo tiene resultados completos pero sin event data público — "
+                        "el análisis de xG, redes y jugadores no está disponible.",
         "no_event_2026": "El event data tiro a tiro del Mundial 2026 aún no es público — "
                          "StatsBomb suele liberarlo meses después de la final. Cuando salga, "
                          "esta pestaña tendrá el análisis completo (xG, redes de pases, "
@@ -130,7 +139,14 @@ STR = {
         "stages": {"LAST_32": "Round of 32", "LAST_16": "Round of 16",
                    "QUARTER_FINALS": "Quarter-finals", "SEMI_FINALS": "Semi-finals",
                    "THIRD_PLACE": "Third place", "FINAL": "Final"},
-        "stages_sb": {},
+        "stages_sb": {"group stage": "Group stage", "first group stage": "First group stage",
+                      "second group stage": "Second group stage", "first round": "First round",
+                      "second round": "Second round", "final round": "Final round",
+                      "round of 16": "Round of 16", "quarter-finals": "Quarter-finals",
+                      "semi-finals": "Semi-finals", "third-place match": "Third place",
+                      "final": "Final"},
+        "results_only": "This tournament has complete results but no public event data — "
+                        "xG, network and player analysis is not available.",
         "no_event_2026": "Shot-by-shot event data for the 2026 World Cup is not public yet — "
                          "StatsBomb usually releases it months after the final. Once it lands, "
                          "this tab will offer the full deep dive (xG, pass networks, "
@@ -315,6 +331,13 @@ def nicknames() -> dict:
     return statsbomb.load_nicknames()
 
 
+@st.cache_data
+def results() -> pd.DataFrame:
+    """Resultados completos de todos los Mundiales 1930-2022 (Fjelstul database)."""
+    path = statsbomb.PROCESSED / "results_matches.parquet"
+    return pd.read_parquet(path) if path.exists() else pd.DataFrame()
+
+
 @st.cache_data(ttl=600)
 def fd_api(path: str, token: str) -> dict:
     """football-data.org v4 (free tier: 10 req/min). Cachea 10 minutos.
@@ -465,16 +488,22 @@ def tab_match(t: dict, m: pd.DataFrame, s_all: pd.DataFrame):
 
 # ---------- Tab 2: Torneo 2022 ----------
 
-def tab_tournament(t: dict, m: pd.DataFrame, s_all: pd.DataFrame):
-    if m.empty:
+def tab_tournament(t: dict, m: pd.DataFrame, s_all: pd.DataFrame, r: pd.DataFrame):
+    if m.empty and r.empty:
         st.info(t["no_data"])
         return
 
-    # Cuadro de llaves primero, como en las coberturas de los Mundiales
-    rounds = statsbomb_bracket_rounds(m, s_all, t)
+    # Cuadro primero, como en las coberturas: Fjelstul (completo) si existe,
+    # si no, los partidos de StatsBomb normalizados
+    src = r if not r.empty else _sb_results(m, s_all)
+    rounds = results_bracket_rounds(src, t)
     if rounds:
         st.subheader(t["bracket"])
         st.markdown(bracket_html(rounds), unsafe_allow_html=True)
+
+    if m.empty or s_all.empty:
+        st.info(t["results_only"])
+        return
 
     # las tandas de penales (period 5) no cuentan como tiros ni goles en las stats oficiales
     s = s_all.query("period < 5")
@@ -572,35 +601,55 @@ def bracket_html(rounds: list) -> str:
     return f"<div style='display:flex;gap:12px;height:{height}px'>{cols}</div>"
 
 
-def statsbomb_bracket_rounds(m_sel: pd.DataFrame, s_all: pd.DataFrame, t: dict) -> list:
-    """Rondas eliminatorias desde los partidos de StatsBomb (banderas emoji).
-
-    Para empates en eliminatorias, la tanda de penales se reconstruye desde los
-    tiros de period 5 del event data para marcar al ganador.
-    """
-    ko = m_sel[~m_sel.stage.str.contains("Group", case=False)].copy()
-    if ko.empty:
-        return []
-    counts = ko.stage.value_counts()
-    order = sorted(counts.index, key=lambda s: (-counts[s], s == "Final"))
+def _sb_results(m_sel: pd.DataFrame, s_all: pd.DataFrame) -> pd.DataFrame:
+    """Normaliza los partidos de StatsBomb al esquema de resultados, reconstruyendo
+    la tanda de penales desde los tiros de period 5 del event data."""
+    if m_sel.empty:
+        return pd.DataFrame()
     pens = (s_all[s_all.period == 5].groupby(["match_id", "team"]).is_goal.sum()
             if not s_all.empty else pd.Series(dtype=int))
+    rows = []
+    for _, m in m_sel.iterrows():
+        ph = pa = None
+        if m.home_score == m.away_score and (m.match_id, m.home_team) in pens.index:
+            ph = int(pens.get((m.match_id, m.home_team), 0))
+            pa = int(pens.get((m.match_id, m.away_team), 0))
+        rows.append({"stage": m.stage, "date": m.date,
+                     "home_team": m.home_team, "away_team": m.away_team,
+                     "home_score": m.home_score, "away_score": m.away_score,
+                     "pen_home": ph, "pen_away": pa})
+    return pd.DataFrame(rows)
+
+
+def results_bracket_rounds(df: pd.DataFrame, t: dict, max_col: int = 12) -> list:
+    """Rondas del cuadro desde una tabla de resultados (stage, date, equipos, marcador, penales).
+
+    - Torneos chicos (≤ 40 partidos, los Mundiales de 16 equipos o datos parciales):
+      se grafica TODO el torneo, fase de grupos incluida.
+    - Columnas con más de `max_col` tarjetas se parten en varias.
+    - Las rondas se ordenan cronológicamente (fecha del primer partido de cada fase).
+    """
+    if df.empty:
+        return []
+    d = df.copy()
+    if len(d) > 40:  # torneo moderno completo: solo eliminatorias
+        d = d[~d.stage.str.contains("group", case=False)]
+    if d.empty:
+        return []
 
     def pen_txt(p):
-        return (f" <span style='font-size:.7rem;color:#8a8f98'>({p})</span>"
-                if p is not None else "")
+        return (f" <span style='font-size:.7rem;color:#8a8f98'>({int(p)})</span>"
+                if pd.notna(p) else "")
 
+    order = d.groupby("stage").date.min().sort_values().index
     rounds = []
     for stage in order:
         cards = []
-        for _, m in ko[ko.stage == stage].sort_values("date").iterrows():
+        for _, m in d[d.stage == stage].sort_values("date").iterrows():
             hs, as_ = int(m.home_score), int(m.away_score)
-            ph = pa = None
-            if hs == as_ and (m.match_id, m.home_team) in pens.index:
-                ph = int(pens.get((m.match_id, m.home_team), 0))
-                pa = int(pens.get((m.match_id, m.away_team), 0))
-            win_h = hs > as_ or (ph is not None and ph > pa)
-            win_a = as_ > hs or (pa is not None and pa > ph)
+            ph, pa = m.get("pen_home"), m.get("pen_away")
+            win_h = hs > as_ or (pd.notna(ph) and ph > pa)
+            win_a = as_ > hs or (pd.notna(pa) and pa > ph)
             cards.append({
                 "when": pd.to_datetime(m.date).strftime("%d %b %Y"),
                 "rows": [
@@ -608,7 +657,11 @@ def statsbomb_bracket_rounds(m_sel: pd.DataFrame, s_all: pd.DataFrame, t: dict) 
                     (f"{flag(m.away_team)} {m.away_team}", f"{as_}{pen_txt(pa)}", win_a),
                 ],
             })
-        rounds.append((t["stages_sb"].get(stage, stage), cards))
+        label = t["stages_sb"].get(stage, stage.title() if stage.islower() else stage)
+        n_chunks = -(-len(cards) // max_col)
+        for i in range(n_chunks):
+            chunk = cards[i * max_col:(i + 1) * max_col]
+            rounds.append((label if n_chunks == 1 else f"{label} · {i + 1}", chunk))
     return rounds
 
 
@@ -742,27 +795,33 @@ st.title("Soccer Analytics Lab")
 
 # Navegación jerárquica: torneo/liga → temporada → (torneo global | partido a fondo)
 # El Mundial 2026 en curso es una entrada más del selector (vía API, sin event data aún).
-m_all = matches()
+m_all, r_all = matches(), results()
+comps = sorted(set(m_all.competition.unique())
+               | (set(r_all.competition.unique()) if not r_all.empty else set()))
 col_c, col_s = st.columns([2, 1])
-comp = col_c.selectbox(T["competition"],
-                       sorted(m_all.competition.unique()) + [T["live_wc"]])
+comp = col_c.selectbox(T["competition"], comps + [T["live_wc"]])
 is_live = comp == T["live_wc"]
 
 if is_live:
     col_s.selectbox(T["season"], ["2026"])
 else:
-    seasons = sorted(m_all[m_all.competition == comp].season.unique(), reverse=True)
+    sb_seasons = set(m_all[m_all.competition == comp].season.unique())
+    fj_seasons = (set(r_all[r_all.competition == comp].season.unique())
+                  if not r_all.empty else set())
+    seasons = sorted(sb_seasons | fj_seasons, key=lambda s: s[:4], reverse=True)
     season = col_s.selectbox(T["season"], seasons)
     m_sel = m_all[(m_all.competition == comp) & (m_all.season == season) & m_all.has_events]
     s_sel = shots()[shots().match_id.isin(m_sel.match_id)]
+    r_sel = (r_all[(r_all.competition == comp) & (r_all.season == season)]
+             if not r_all.empty else pd.DataFrame())
     cap_l, cap_r = st.columns([3, 2])
-    cap_l.caption(T["sel_cap"].format(n=len(m_sel)))
+    cap_l.caption(T["sel_cap"].format(n=len(m_sel)) if len(m_sel) else T["results_only"])
     with cap_r.expander(T["add_more"]):
         st.markdown(T["add_more_body"])
 
 t1, t2, t3 = st.tabs(T["tabs"])
 with t1:
-    tab_wc26_overview(T) if is_live else tab_tournament(T, m_sel, s_sel)
+    tab_wc26_overview(T) if is_live else tab_tournament(T, m_sel, s_sel, r_sel)
 with t2:
     tab_wc26_matches(T) if is_live else tab_match(T, m_sel, s_sel)
 with t3:

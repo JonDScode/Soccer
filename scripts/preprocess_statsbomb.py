@@ -83,19 +83,51 @@ def build_players() -> pd.DataFrame:
     return pd.DataFrame(rows.values())
 
 
+def build_results() -> pd.DataFrame:
+    """Resultados completos de todos los Mundiales 1930-2022 (Fjelstul database)."""
+    path = RAW.parent / "fjelstul_matches.csv"
+    if not path.exists():
+        return pd.DataFrame()
+    df = pd.read_csv(path)
+    pens = df.penalty_shootout == 1
+    # El dataset trae masculinos y femeninos; el nombre del torneo los distingue.
+    # Se usan los mismos nombres de competición que StatsBomb para que el
+    # selector una ambas fuentes.
+    comp = df.tournament_name.str.contains("Women").map(
+        {True: "Women's World Cup", False: "FIFA World Cup"})
+    return pd.DataFrame({
+        "competition": comp,
+        "season": df.tournament_name.str.extract(r"^(\d{4})")[0],
+        "stage": df.stage_name,
+        "date": df.match_date,
+        "home_team": df.home_team_name,
+        "away_team": df.away_team_name,
+        "home_score": df.home_team_score,
+        "away_score": df.away_team_score,
+        "pen_home": df.home_team_score_penalties.where(pens),
+        "pen_away": df.away_team_score_penalties.where(pens),
+    })
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     matches = build_matches()
     shots = build_shots(matches)
     players = build_players()
+    results = build_results()
     with_events = matches.match_id.isin(shots.match_id.unique())
     matches["has_events"] = with_events
     matches.to_parquet(OUT / "matches.parquet", index=False)
     shots.to_parquet(OUT / "shots.parquet", index=False)
     players.to_parquet(OUT / "players.parquet", index=False)
+    if not results.empty:
+        results.to_parquet(OUT / "results_matches.parquet", index=False)
 
     print(f"{len(matches)} partidos ({with_events.sum()} con eventos), "
           f"{len(shots)} tiros, {len(players)} jugadores")
+    print(f"Resultados Fjelstul: {len(results)} partidos, "
+          f"{results.season.nunique() if not results.empty else 0} Mundiales "
+          f"({int(results.pen_home.notna().sum()) if not results.empty else 0} con tanda de penales)")
     resumen = matches.groupby(["competition", "season"]).size()
     print(resumen.to_string())
 
