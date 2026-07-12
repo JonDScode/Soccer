@@ -11,6 +11,8 @@ soccerdata>=1.7
 # Visualización
 matplotlib>=3.8
 mplsoccer>=1.4
+seaborn>=0.13
+scipy>=1.11
 
 # ML
 scikit-learn>=1.4
@@ -21,6 +23,7 @@ duckdb>=1.0
 
 # Notebooks y app
 jupyter>=1.0
+jupytext>=1.16
 streamlit>=1.35
 
 # Fases avanzadas (descomentar cuando se necesiten)

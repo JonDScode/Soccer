@@ -13,6 +13,14 @@ El fútbol es hoy una de las industrias más activas en analítica deportiva:
 
 Problemas típicos del dominio (y de este proyecto): modelos de **Expected Goals (xG)**, valoración de acciones (**VAEP**), redes de pases, **forecasting** de resultados (Poisson / Dixon-Coles / Elo), scouting por similitud de jugadores, y **pitch control** con datos de tracking.
 
+## Vista previa — Fase 1 (datos reales del Mundial 2022)
+
+Generadas en [notebooks/01_viz_mundial.ipynb](notebooks/01_viz_mundial.ipynb) con eventos de StatsBomb del Inglaterra 6-2 Irán:
+
+| Shot map con xG | Heatmap de toques | Red de pases |
+|---|---|---|
+| ![Shot map](reports/figures/shot_map.png) | ![Heatmap](reports/figures/heatmap_touches.png) | ![Red de pases](reports/figures/pass_network.png) |
+
 ## Estructura
 
 ```
