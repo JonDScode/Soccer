@@ -19,8 +19,22 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
 from soccer import metrics, statsbomb, viz  # noqa: E402
+
+
+def _load_dotenv() -> None:
+    """Carga ROOT/.env (KEY=VALUE por línea) sin dependencias externas."""
+    env = ROOT / ".env"
+    if env.exists():
+        for line in env.read_text(encoding="utf-8").splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip())
+
+
+_load_dotenv()
 
 st.set_page_config(page_title="Soccer Analytics Lab",
                    page_icon=":material/sports_soccer:", layout="wide")
@@ -255,11 +269,24 @@ def nicknames() -> dict:
 
 @st.cache_data(ttl=600)
 def fd_api(path: str, token: str) -> dict:
-    """football-data.org v4 (free tier: 10 req/min). Cachea 10 minutos."""
-    r = requests.get(f"https://api.football-data.org/v4{path}",
-                     headers={"X-Auth-Token": token}, timeout=30)
-    r.raise_for_status()
-    return r.json()
+    """football-data.org v4 (free tier: 10 req/min). Cachea 10 minutos.
+
+    Respeta el throttling que documenta la API: si responde 429, espera lo que
+    indique X-RequestCounter-Reset / Retry-After (una sola vez) y reintenta.
+    """
+    import time
+
+    for attempt in range(2):
+        r = requests.get(f"https://api.football-data.org/v4{path}",
+                         headers={"X-Auth-Token": token}, timeout=30)
+        if r.status_code == 429 and attempt == 0:
+            wait = int(r.headers.get("Retry-After")
+                       or r.headers.get("X-RequestCounter-Reset") or 60)
+            time.sleep(min(wait, 65))
+            continue
+        r.raise_for_status()
+        return r.json()
+    return {}
 
 
 # ---------- Tab 1: Partido a fondo ----------
