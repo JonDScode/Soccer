@@ -18,7 +18,7 @@ Cada acción del partido con coordenadas: pases, tiros, duelos, presiones. Es el
 | Fuente | Qué tiene | Cómo acceder |
 |--------|-----------|--------------|
 | **football-data.co.uk** | 25+ temporadas de resultados de ~22 ligas europeas en CSV, con cuotas de apuestas históricas (clave para forecasting y backtesting). | Descarga directa de CSVs |
-| **FBref** | Stats avanzadas por jugador/equipo/partido (xG, progresión, presiones) de decenas de ligas, proveídas por Opta. | Scraping educado con la librería `soccerdata` (respetar rate limits) |
+| **FBref** | Stats por jugador/equipo/partido de decenas de ligas. ⚠️ **Perdió la licencia de Opta en enero 2026**: las stats avanzadas (xG, presiones, progresión) ya no se actualizan; el archivo histórico sigue disponible y las stats básicas continúan. | Scraping educado con la librería `soccerdata` (respetar rate limits) |
 | **Understat** | xG tiro a tiro de las 6 grandes ligas europeas desde 2014. | Librería `soccerdata` o `understatapi` |
 | **Kaggle — European Soccer Database** | 25.000+ partidos, 10.000+ jugadores (atributos de FIFA), 11 ligas, 2008-2016, en SQLite. | Kaggle datasets |
 | **Transfermarkt** | Valores de mercado, traspasos, plantillas. | Proyecto GitHub `transfermarkt-datasets` (datos ya extraídos) |

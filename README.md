@@ -61,10 +61,16 @@ python -m venv .venv
 pip install -r requirements.txt
 
 # 2. Datos reales: eventos del Mundial 2022 (StatsBomb Open Data)
-python scripts/download_statsbomb.py --sample 5
+python scripts/download_statsbomb.py            # los 64 partidos (o --sample 5 para probar)
+python scripts/preprocess_statsbomb.py          # genera los Parquet del dashboard
 
 # 3. O datos sintéticos: una liga completa de 20 equipos con tiros y xG
 python scripts/generate_synthetic.py --seasons 3 --seed 42
+
+# 4. Dashboard interactivo (partido a fondo, torneo 2022, Mundial 2026 en vivo)
+streamlit run app/streamlit_app.py
 ```
+
+Para la pestaña del **Mundial 2026 en vivo**: registrarse gratis en [football-data.org](https://www.football-data.org/client/register) y exportar la key como `FOOTBALL_DATA_TOKEN` (o pegarla en la app).
 
 Ver [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) para el catálogo completo de fuentes, [docs/ROADMAP.md](docs/ROADMAP.md) para el plan del proyecto, y [docs/DATOS_CLUB_PEQUENO.md](docs/DATOS_CLUB_PEQUENO.md) para cómo se genera el dato profesional y cómo replicarlo en un club amateur con poco presupuesto.

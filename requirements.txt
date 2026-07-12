@@ -25,6 +25,7 @@ duckdb>=1.0
 jupyter>=1.0
 jupytext>=1.16
 streamlit>=1.35
+plotly>=5.20
 
 # Fases avanzadas (descomentar cuando se necesiten)
 # socceraction>=1.5    # VAEP / xT
