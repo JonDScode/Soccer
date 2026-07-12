@@ -60,15 +60,36 @@ def build_shots(matches: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def build_players(matches: pd.DataFrame) -> pd.DataFrame:
+    """Mapa jugador → apodo (el nombre reconocible: 'Lionel Messi', no 'Cuccittini')."""
+    rows = {}
+    for match_id in matches.match_id:
+        path = RAW / "lineups" / f"{match_id}.json"
+        if not path.exists():
+            continue
+        for team in json.load(open(path, encoding="utf-8")):
+            for p in team["lineup"]:
+                rows[p["player_name"]] = {
+                    "player": p["player_name"],
+                    "nickname": p.get("player_nickname") or p["player_name"],
+                    "team": team["team_name"],
+                    "jersey": p.get("jersey_number"),
+                }
+    return pd.DataFrame(rows.values())
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     matches = build_matches()
     shots = build_shots(matches)
+    players = build_players(matches)
     n_events = matches.match_id.isin(shots.match_id.unique()).sum()
     matches.to_parquet(OUT / "matches.parquet", index=False)
     shots.to_parquet(OUT / "shots.parquet", index=False)
-    print(f"{len(matches)} partidos ({n_events} con eventos descargados), {len(shots)} tiros")
-    print(f"-> {OUT / 'matches.parquet'}\n-> {OUT / 'shots.parquet'}")
+    players.to_parquet(OUT / "players.parquet", index=False)
+    print(f"{len(matches)} partidos ({n_events} con eventos descargados), "
+          f"{len(shots)} tiros, {len(players)} jugadores")
+    print(f"-> {OUT / 'matches.parquet'}\n-> {OUT / 'shots.parquet'}\n-> {OUT / 'players.parquet'}")
 
 
 if __name__ == "__main__":

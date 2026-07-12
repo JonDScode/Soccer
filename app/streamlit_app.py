@@ -18,9 +18,10 @@ import requests
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from soccer import statsbomb, viz  # noqa: E402
+from soccer import metrics, statsbomb, viz  # noqa: E402
 
-st.set_page_config(page_title="Soccer Analytics Lab", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Soccer Analytics Lab",
+                   page_icon=":material/sports_soccer:", layout="wide")
 
 BLUE, ORANGE, INK, MUTED = viz.COLOR_A, viz.COLOR_B, "#212529", "#6c757d"
 PLOTLY_LAYOUT = dict(
@@ -46,6 +47,11 @@ def events(match_id: int) -> pd.DataFrame:
     return statsbomb.load_events(match_id)
 
 
+@st.cache_data
+def nicknames() -> dict:
+    return statsbomb.load_nicknames()
+
+
 @st.cache_data(ttl=600)
 def fd_api(path: str, token: str) -> dict:
     """football-data.org v4 (free tier: 10 req/min). Cachea 10 minutos."""
@@ -67,7 +73,7 @@ def tab_match():
 
     s = shots()[shots().match_id == row.match_id]
     if (s.period == 5).any():
-        st.caption("⚠️ El partido se definió por penales; la tanda se excluye de tiros y xG.")
+        st.caption("El partido se definió por penales; la tanda se excluye de tiros y xG.")
     s = s[s.period < 5]  # la tanda de penales no cuenta en las estadísticas del partido
     xg_a, xg_b = s[s.team == team_a].xg.sum(), s[s.team == team_b].xg.sum()
 
@@ -89,22 +95,104 @@ def tab_match():
         fig.add_trace(go.Scatter(
             x=g.minute, y=t.xg.cumsum()[g.index].round(3), mode="markers",
             marker=dict(color=color, size=11, symbol="circle", line=dict(color=INK, width=1)),
-            name=f"Gol {team}", text=g.player, hovertemplate="⚽ %{text} %{x}'<extra></extra>"))
+            name=f"Gol {team}", text=g.player.map(lambda p: nicknames().get(p, p)),
+            hovertemplate="Gol: %{text} %{x}'<extra></extra>"))
     fig.update_layout(title="Carrera de xG (los puntos son goles)",
                       xaxis_title="Minuto", yaxis_title="xG acumulado", **PLOTLY_LAYOUT)
     st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Shot map")
     st.caption(f"{team_a} ataca a la derecha · área del punto = xG del tiro · goles rellenos")
-    st.pyplot(viz.shot_map_fig(s, team_a, team_b), use_container_width=True)
+    st.pyplot(viz.shot_map_fig(s, team_a, team_b, nicks=nicknames()), use_container_width=True)
 
     st.subheader("Redes de pases")
     ev = events(int(row.match_id))
     col1, col2 = st.columns(2)
     with col1:
-        st.pyplot(viz.pass_network_fig(ev, team_a, BLUE), use_container_width=True)
+        st.pyplot(viz.pass_network_fig(ev, team_a, BLUE, nicks=nicknames()), use_container_width=True)
     with col2:
-        st.pyplot(viz.pass_network_fig(ev, team_b, ORANGE), use_container_width=True)
+        st.pyplot(viz.pass_network_fig(ev, team_b, ORANGE, nicks=nicknames()), use_container_width=True)
+
+    # ---- Posesión ----
+    st.subheader("Posesión")
+    pos_a = metrics.possession_share(ev, team_a)
+    c1, c2 = st.columns(2)
+    c1.metric(team_a, f"{pos_a:.0f}%")
+    c2.metric(team_b, f"{100 - pos_a:.0f}%")
+
+    flow = metrics.possession_flow(ev, team_a)
+    colors = [BLUE if v >= 50 else ORANGE for v in flow.pct_a]
+    fig = go.Figure(go.Bar(
+        x=flow.tbin + 2.5, y=flow.pct_a - 50, base=50, width=4.6, marker_color=colors,
+        customdata=flow.pct_a.round(0),
+        hovertemplate="min %{x:.0f}: " + team_a + " %{customdata:.0f}%<extra></extra>"))
+    for _, g in s[s.is_goal].iterrows():
+        fig.add_vline(x=g.minute, line=dict(color=INK, width=1, dash="dot"),
+                      annotation_text=viz.short_name(g.player, nicknames()),
+                      annotation_font_size=9, annotation_position="top")
+    fig.add_hline(y=50, line=dict(color=MUTED, width=1))
+    fig.update_layout(title=f"Flujo de posesión por tramos de 5 min (azul = domina {team_a})",
+                      xaxis_title="Minuto", yaxis_title="% de posesión",
+                      yaxis=dict(range=[0, 100]), height=340,
+                      **{**PLOTLY_LAYOUT, "hovermode": "closest"})
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption("Posesión aproximada por proporción de pases en cada ventana — el proxy estándar "
+               "con event data. Las líneas punteadas marcan los goles.")
+
+    # ---- Jugador a jugador ----
+    st.subheader("Análisis por jugador")
+    players = (ev[ev.player_name.notna()].groupby("player_name")
+               .agg(team=("team_name", "first"), n=("player_name", "size"))
+               .sort_values(["team", "n"], ascending=[True, False]))
+    player = st.selectbox("Jugador", players.index,
+                          format_func=lambda p: f"{nicknames().get(p, p)} ({players.loc[p, 'team']})")
+    display = nicknames().get(player, player)
+    color = BLUE if players.loc[player, "team"] == team_a else ORANGE
+
+    ps = metrics.player_match_stats(ev, player)
+    r1 = st.columns(6)
+    r1[0].metric("Pases", f"{ps['pases_completados']}/{ps['pases']}")
+    r1[1].metric("% pase", f"{ps['pct_pase']:.0f}%")
+    r1[2].metric("Pases clave", ps["pases_clave"])
+    r1[3].metric("Tiros", ps["tiros"])
+    r1[4].metric("xG", ps["xg"])
+    r1[5].metric("Goles", ps["goles"])
+    r2 = st.columns(6)
+    r2[0].metric("Conducciones", ps["conducciones"])
+    r2[1].metric("Regates", ps["regates"])
+    r2[2].metric("Presiones", ps["presiones"])
+    r2[3].metric("Recuperaciones", ps["recuperaciones"])
+    r2[4].metric("Asistencias", ps["asistencias"])
+    r2[5].metric("Acciones", ps["acciones"])
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.pyplot(viz.touch_map_fig(ev, player, color, display_name=display), use_container_width=True)
+    with col2:
+        st.pyplot(viz.pass_map_fig(ev, player, color, display_name=display), use_container_width=True)
+
+    act = metrics.player_activity(ev, player)
+    fig = go.Figure(go.Bar(x=act.tbin + 2.5, y=act.acciones, width=4.6, marker_color=color,
+                           hovertemplate="min %{x:.0f}: %{y} acciones<extra></extra>"))
+    fig.update_layout(title="Participación por tramos de 5 min",
+                      xaxis_title="Minuto", yaxis_title="Acciones", height=300,
+                      **{**PLOTLY_LAYOUT, "hovermode": "closest"})
+    st.plotly_chart(fig, use_container_width=True)
+
+    with st.expander("¿Con qué datos se hacen estos análisis (y los del Mundial 2026)?"):
+        st.markdown("""
+| Análisis que ves en la TV | Dato que lo alimenta en 2026 | Cómo lo replicamos aquí |
+|---|---|---|
+| Posesión oficial | Tracking óptico de FIFA (cámaras dedicadas siguiendo balón y 22 jugadores) que mide tiempo real de control | Proporción de pases por ventana de 5 min (event data) — correlaciona >0.95 con la oficial |
+| xG del partido y carrera de xG | Modelos entrenados sobre millones de tiros (Opta/StatsBomb) | xG oficial de StatsBomb incluido en su event data abierto |
+| Mapas de toques y pases por jugador | Event data (cada acción con coordenadas, codificada por humanos + IA) | Idéntico — mismo tipo de dato, StatsBomb Open Data |
+| Redes de pases y formaciones | Event data + alineaciones | Idéntico |
+| Distancia recorrida, velocidades, sprints | Tracking óptico + GPS en el chaleco de cada jugador | **No replicable con event data** — requiere tracking (muestras gratis: Metrica Sports, SkillCorner) |
+| "Rupturas de línea", presión, espacios generados | Métricas de la FIFA Football Intelligence sobre tracking con esqueleto (limb tracking) | Fase avanzada del roadmap: pitch control con el sample de Metrica |
+
+**La regla general**: si el análisis es *dónde ocurrió una acción con balón* → event data (lo tenemos).
+Si es *dónde estaban los otros 21 jugadores* o *cuánto corrió alguien* → tracking (solo muestras abiertas).
+""")
 
 
 # ---------- Tab 2: Torneo 2022 ----------
@@ -144,6 +232,7 @@ def tab_tournament():
     players = (s.groupby("player").agg(goles=("is_goal", "sum"), xg=("xg", "sum"),
                                        tiros=("xg", "size"), equipo=("team", "first"))
                .query("goles >= 3").sort_values("goles", ascending=False))
+    players.index = [nicknames().get(p, p) for p in players.index]
     fig2 = go.Figure()
     fig2.add_trace(go.Bar(x=players.index, y=players.goles, name="Goles", marker_color=BLUE))
     fig2.add_trace(go.Bar(x=players.index, y=players.xg.round(2), name="xG", marker_color=ORANGE))
@@ -214,8 +303,10 @@ def tab_worldcup_2026():
 
 # ---------- Layout ----------
 
-st.title("⚽ Soccer Analytics Lab")
-t1, t2, t3 = st.tabs(["🔬 Partido a fondo (2022)", "🏆 Torneo 2022", "🔴 Mundial 2026 en vivo"])
+st.title("Soccer Analytics Lab")
+t1, t2, t3 = st.tabs([":material/query_stats: Partido a fondo (2022)",
+                      ":material/trophy: Torneo 2022",
+                      ":material/live_tv: Mundial 2026 en vivo"])
 with t1:
     tab_match()
 with t2:

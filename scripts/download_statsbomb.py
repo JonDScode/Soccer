@@ -53,9 +53,15 @@ def download(competition_id: int, season_id: int, sample: int | None) -> None:
         matches = matches[:sample]
 
     events_dir = OUT_DIR / "events"
+    lineups_dir = OUT_DIR / "lineups"
     events_dir.mkdir(exist_ok=True)
+    lineups_dir.mkdir(exist_ok=True)
     for i, m in enumerate(matches, 1):
         match_id = m["match_id"]
+        lineup_out = lineups_dir / f"{match_id}.json"
+        if not lineup_out.exists():
+            lineups = fetch_json(f"{BASE}/lineups/{match_id}.json")
+            lineup_out.write_text(json.dumps(lineups, ensure_ascii=False), encoding="utf-8")
         out = events_dir / f"{match_id}.json"
         if out.exists():
             print(f"  [{i}/{len(matches)}] {match_id} ya existe, salto")

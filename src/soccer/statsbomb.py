@@ -18,6 +18,12 @@ def load_shots() -> pd.DataFrame:
     return pd.read_parquet(PROCESSED / "shots.parquet")
 
 
+def load_nicknames() -> dict:
+    """Mapa nombre completo → apodo reconocible ('...Messi Cuccittini' → 'Lionel Messi')."""
+    players = pd.read_parquet(PROCESSED / "players.parquet")
+    return dict(zip(players.player, players.nickname))
+
+
 def load_events(match_id: int) -> pd.DataFrame:
     """Eventos crudos de un partido, aplanados con json_normalize (sep='_')."""
     events = json.load(open(RAW / "events" / f"{match_id}.json", encoding="utf-8"))
