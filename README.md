@@ -60,16 +60,21 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
-# 2. Datos reales: eventos del Mundial 2022 (StatsBomb Open Data)
-python scripts/download_statsbomb.py            # los 64 partidos (o --sample 5 para probar)
+# 2. Datos reales (StatsBomb Open Data) — descarga los torneos que quieras
+python scripts/download_statsbomb.py --list                      # ver competiciones disponibles
+python scripts/download_statsbomb.py                             # Mundial 2022 (64 partidos)
+python scripts/download_statsbomb.py --competition 43 --season 3 # Mundial 2018
+python scripts/download_statsbomb.py --competition 55 --season 282  # Euro 2024
 python scripts/preprocess_statsbomb.py          # genera los Parquet del dashboard
 
 # 3. O datos sintéticos: una liga completa de 20 equipos con tiros y xG
 python scripts/generate_synthetic.py --seasons 3 --seed 42
 
-# 4. Dashboard interactivo (partido a fondo, torneo 2022, Mundial 2026 en vivo)
+# 4. Dashboard interactivo (bilingüe ES/EN)
 streamlit run app/streamlit_app.py
 ```
+
+Navegación del dashboard: eliges **torneo/liga → temporada** y de ahí ves las **estadísticas globales del torneo** (mapa xG a favor/en contra, goleadores vs xG) o el **partido a fondo** (carrera de xG, shot map, redes de pases, posesión por tramos y análisis por jugador). Aparte: panel del **Mundial 2026 en vivo** (API) y **Metodología** (de dónde salen los datos, qué es el xG, qué se puede replicar con event data vs tracking).
 
 Para la pestaña del **Mundial 2026 en vivo**: registrarse gratis en [football-data.org](https://www.football-data.org/client/register) y exportar la key como `FOOTBALL_DATA_TOKEN` (o pegarla en la app).
 

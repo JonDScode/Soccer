@@ -49,10 +49,20 @@ PLOTLY_LAYOUT = dict(
 
 STR = {
     "es": {
-        "tabs": [":material/query_stats: Partido a fondo (2022)",
-                 ":material/trophy: Torneo 2022",
-                 ":material/live_tv: Mundial 2026 en vivo",
+        "tabs": [":material/trophy: Torneo",
+                 ":material/query_stats: Partido a fondo",
+                 ":material/live_tv: En vivo: Mundial 2026",
                  ":material/menu_book: Metodología"],
+        "competition": "Torneo / Liga", "season": "Temporada",
+        "sel_cap": "{n} partidos con event data de StatsBomb",
+        "add_more": "Agregar más torneos o ligas",
+        "add_more_body": "StatsBomb Open Data tiene más competiciones (Mundiales, Euros, "
+                         "La Liga de la era Messi, Mundial femenino...). Para sumar una:\n"
+                         "```\npython scripts/download_statsbomb.py --list\n"
+                         "python scripts/download_statsbomb.py --competition <id> --season <id>\n"
+                         "python scripts/preprocess_statsbomb.py\n```\n"
+                         "Al recargar, aparece en los selectores.",
+        "no_data": "No hay event data descargado para esta selección.",
         "match": "Partido", "shots": "Tiros", "stage": "Fase",
         "pens_note": "El partido se definió por penales; la tanda se excluye de tiros y xG.",
         "race_title": "Carrera de xG (los puntos son goles)",
@@ -93,10 +103,20 @@ STR = {
                    "until_sub": "hasta la primera sustitución (min {m})"},
     },
     "en": {
-        "tabs": [":material/query_stats: Match deep dive (2022)",
-                 ":material/trophy: 2022 Tournament",
-                 ":material/live_tv: 2026 World Cup live",
+        "tabs": [":material/trophy: Tournament",
+                 ":material/query_stats: Match deep dive",
+                 ":material/live_tv: Live: 2026 World Cup",
                  ":material/menu_book: Methodology"],
+        "competition": "Tournament / League", "season": "Season",
+        "sel_cap": "{n} matches with StatsBomb event data",
+        "add_more": "Add more tournaments or leagues",
+        "add_more_body": "StatsBomb Open Data has more competitions (World Cups, Euros, "
+                         "Messi-era La Liga, Women's World Cup...). To add one:\n"
+                         "```\npython scripts/download_statsbomb.py --list\n"
+                         "python scripts/download_statsbomb.py --competition <id> --season <id>\n"
+                         "python scripts/preprocess_statsbomb.py\n```\n"
+                         "Reload and it shows up in the selectors.",
+        "no_data": "No event data downloaded for this selection.",
         "match": "Match", "shots": "Shots", "stage": "Stage",
         "pens_note": "Decided on penalties; the shootout is excluded from shots and xG.",
         "race_title": "xG race (dots are goals)",
@@ -291,15 +311,18 @@ def fd_api(path: str, token: str) -> dict:
 
 # ---------- Tab 1: Partido a fondo ----------
 
-def tab_match(t: dict):
-    m = matches()
+def tab_match(t: dict, m: pd.DataFrame, s_all: pd.DataFrame):
+    if m.empty:
+        st.info(t["no_data"])
+        return
+    m = m.copy()
     m["label"] = m.stage + " · " + m.home_team + " " + m.home_score.astype(str) \
         + "-" + m.away_score.astype(str) + " " + m.away_team
     label = st.selectbox(t["match"], m.label, index=len(m) - 1)
     row = m[m.label == label].iloc[0]
     team_a, team_b = row.home_team, row.away_team
 
-    s = shots()[shots().match_id == row.match_id]
+    s = s_all[s_all.match_id == row.match_id]
     if (s.period == 5).any():
         st.caption(t["pens_note"])
     s = s[s.period < 5]  # la tanda de penales no cuenta en las estadísticas del partido
@@ -414,9 +437,12 @@ def tab_match(t: dict):
 
 # ---------- Tab 2: Torneo 2022 ----------
 
-def tab_tournament(t: dict):
+def tab_tournament(t: dict, m: pd.DataFrame, s_all: pd.DataFrame):
+    if m.empty:
+        st.info(t["no_data"])
+        return
     # las tandas de penales (period 5) no cuentan como tiros ni goles en las stats oficiales
-    s, m = shots().query("period < 5"), matches()
+    s = s_all.query("period < 5")
 
     xg_for = s.groupby("team").xg.sum()
     against = []
@@ -524,11 +550,25 @@ LANG = "es" if lang == "Español" else "en"
 T = STR[LANG]
 
 st.title("Soccer Analytics Lab")
+
+# Navegación jerárquica: torneo/liga → temporada → (torneo global | partido a fondo)
+m_all = matches()
+col_c, col_s = st.columns([2, 1])
+comp = col_c.selectbox(T["competition"], sorted(m_all.competition.unique()))
+seasons = sorted(m_all[m_all.competition == comp].season.unique(), reverse=True)
+season = col_s.selectbox(T["season"], seasons)
+m_sel = m_all[(m_all.competition == comp) & (m_all.season == season) & m_all.has_events]
+s_sel = shots()[shots().match_id.isin(m_sel.match_id)]
+cap_l, cap_r = st.columns([3, 2])
+cap_l.caption(T["sel_cap"].format(n=len(m_sel)))
+with cap_r.expander(T["add_more"]):
+    st.markdown(T["add_more_body"])
+
 t1, t2, t3, t4 = st.tabs(T["tabs"])
 with t1:
-    tab_match(T)
+    tab_tournament(T, m_sel, s_sel)
 with t2:
-    tab_tournament(T)
+    tab_match(T, m_sel, s_sel)
 with t3:
     tab_worldcup_2026(T)
 with t4:

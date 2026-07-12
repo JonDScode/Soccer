@@ -1,8 +1,10 @@
 """Convierte los JSON crudos de StatsBomb en tablas Parquet para el dashboard.
 
-Produce en data/processed/:
-- matches.parquet  — un partido por fila (equipos, marcador, fase, fecha)
+Escanea TODOS los torneos descargados (cada matches_<comp>_<season>.json en
+data/raw/statsbomb/) y produce en data/processed/:
+- matches.parquet  — un partido por fila, con torneo y temporada
 - shots.parquet    — un tiro por fila con coordenadas, xG y resultado
+- players.parquet  — mapa jugador → apodo reconocible
 
 Uso:
     python scripts/preprocess_statsbomb.py
@@ -16,20 +18,24 @@ import pandas as pd
 RAW = Path(__file__).resolve().parent.parent / "data" / "raw" / "statsbomb"
 OUT = Path(__file__).resolve().parent.parent / "data" / "processed"
 
-COMPETITION_ID, SEASON_ID = 43, 106  # World Cup 2022
-
 
 def build_matches() -> pd.DataFrame:
-    matches = json.load(open(RAW / f"matches_{COMPETITION_ID}_{SEASON_ID}.json", encoding="utf-8"))
-    rows = [{
-        "match_id": m["match_id"],
-        "date": m["match_date"],
-        "stage": m["competition_stage"]["name"],
-        "home_team": m["home_team"]["home_team_name"],
-        "away_team": m["away_team"]["away_team_name"],
-        "home_score": m["home_score"],
-        "away_score": m["away_score"],
-    } for m in matches]
+    rows = []
+    for path in sorted(RAW.glob("matches_*.json")):
+        for m in json.load(open(path, encoding="utf-8")):
+            rows.append({
+                "match_id": m["match_id"],
+                "competition_id": m["competition"]["competition_id"],
+                "season_id": m["season"]["season_id"],
+                "competition": m["competition"]["competition_name"],
+                "season": m["season"]["season_name"],
+                "date": m["match_date"],
+                "stage": m["competition_stage"]["name"],
+                "home_team": m["home_team"]["home_team_name"],
+                "away_team": m["away_team"]["away_team_name"],
+                "home_score": m["home_score"],
+                "away_score": m["away_score"],
+            })
     return pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
 
 
@@ -45,6 +51,8 @@ def build_shots(matches: pd.DataFrame) -> pd.DataFrame:
                 continue
             rows.append({
                 "match_id": m.match_id,
+                "competition_id": m.competition_id,
+                "season_id": m.season_id,
                 "team": e["team"]["name"],
                 "player": e["player"]["name"],
                 "minute": e["minute"],
@@ -60,13 +68,10 @@ def build_shots(matches: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def build_players(matches: pd.DataFrame) -> pd.DataFrame:
+def build_players() -> pd.DataFrame:
     """Mapa jugador → apodo (el nombre reconocible: 'Lionel Messi', no 'Cuccittini')."""
     rows = {}
-    for match_id in matches.match_id:
-        path = RAW / "lineups" / f"{match_id}.json"
-        if not path.exists():
-            continue
+    for path in (RAW / "lineups").glob("*.json"):
         for team in json.load(open(path, encoding="utf-8")):
             for p in team["lineup"]:
                 rows[p["player_name"]] = {
@@ -82,14 +87,17 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     matches = build_matches()
     shots = build_shots(matches)
-    players = build_players(matches)
-    n_events = matches.match_id.isin(shots.match_id.unique()).sum()
+    players = build_players()
+    with_events = matches.match_id.isin(shots.match_id.unique())
+    matches["has_events"] = with_events
     matches.to_parquet(OUT / "matches.parquet", index=False)
     shots.to_parquet(OUT / "shots.parquet", index=False)
     players.to_parquet(OUT / "players.parquet", index=False)
-    print(f"{len(matches)} partidos ({n_events} con eventos descargados), "
+
+    print(f"{len(matches)} partidos ({with_events.sum()} con eventos), "
           f"{len(shots)} tiros, {len(players)} jugadores")
-    print(f"-> {OUT / 'matches.parquet'}\n-> {OUT / 'shots.parquet'}\n-> {OUT / 'players.parquet'}")
+    resumen = matches.groupby(["competition", "season"]).size()
+    print(resumen.to_string())
 
 
 if __name__ == "__main__":
