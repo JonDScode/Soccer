@@ -51,9 +51,20 @@ STR = {
     "es": {
         "tabs": [":material/trophy: Torneo",
                  ":material/query_stats: Partido a fondo",
-                 ":material/live_tv: En vivo: Mundial 2026",
                  ":material/menu_book: Metodología"],
         "competition": "Torneo / Liga", "season": "Temporada",
+        "live_wc": "FIFA World Cup · en vivo",
+        "live_cap": "Datos en vivo del torneo en curso (resultados, tablas y goleadores — sin event data todavía)",
+        "groups": "Fase de grupos", "bracket": "Fase eliminatoria", "group": "Grupo",
+        "col_team": "Equipo", "col_pj": "PJ", "col_dg": "DG", "col_pts": "Pts",
+        "stages": {"LAST_32": "Dieciseisavos", "LAST_16": "Octavos",
+                   "QUARTER_FINALS": "Cuartos", "SEMI_FINALS": "Semifinales",
+                   "THIRD_PLACE": "3er puesto", "FINAL": "Final"},
+        "no_event_2026": "El event data tiro a tiro del Mundial 2026 aún no es público — "
+                         "StatsBomb suele liberarlo meses después de la final. Cuando salga, "
+                         "esta pestaña tendrá el análisis completo (xG, redes de pases, "
+                         "jugador a jugador) igual que los demás torneos. Por ahora, "
+                         "resultados y calendario:",
         "sel_cap": "{n} partidos con event data de StatsBomb",
         "add_more": "Agregar más torneos o ligas",
         "add_more_body": "StatsBomb Open Data tiene más competiciones (Mundiales, Euros, "
@@ -105,9 +116,20 @@ STR = {
     "en": {
         "tabs": [":material/trophy: Tournament",
                  ":material/query_stats: Match deep dive",
-                 ":material/live_tv: Live: 2026 World Cup",
                  ":material/menu_book: Methodology"],
         "competition": "Tournament / League", "season": "Season",
+        "live_wc": "FIFA World Cup · live",
+        "live_cap": "Live data from the ongoing tournament (results, tables and scorers — no event data yet)",
+        "groups": "Group stage", "bracket": "Knockout bracket", "group": "Group",
+        "col_team": "Team", "col_pj": "P", "col_dg": "GD", "col_pts": "Pts",
+        "stages": {"LAST_32": "Round of 32", "LAST_16": "Round of 16",
+                   "QUARTER_FINALS": "Quarter-finals", "SEMI_FINALS": "Semi-finals",
+                   "THIRD_PLACE": "Third place", "FINAL": "Final"},
+        "no_event_2026": "Shot-by-shot event data for the 2026 World Cup is not public yet — "
+                         "StatsBomb usually releases it months after the final. Once it lands, "
+                         "this tab will offer the full deep dive (xG, pass networks, "
+                         "player analysis) like the other tournaments. For now, "
+                         "results and fixtures:",
         "sel_cap": "{n} matches with StatsBomb event data",
         "add_more": "Add more tournaments or leagues",
         "add_more_body": "StatsBomb Open Data has more competitions (World Cups, Euros, "
@@ -483,51 +505,97 @@ def tab_tournament(t: dict, m: pd.DataFrame, s_all: pd.DataFrame):
     st.caption(t["scorers_cap"])
 
 
-# ---------- Tab 3: Mundial 2026 en vivo ----------
+# ---------- Mundial 2026 en vivo (API, sin event data todavía) ----------
 
-def tab_worldcup_2026(t: dict):
-    st.markdown(t["wc_intro"])
-    token = os.getenv("FOOTBALL_DATA_TOKEN") or st.text_input(t["api_key"], type="password")
+def _wc26_token(t: dict) -> str | None:
+    token = os.getenv("FOOTBALL_DATA_TOKEN")
     if not token:
         st.info(t["no_key"])
+    return token
+
+
+def _wc26_matches_df(token: str) -> pd.DataFrame:
+    ms = pd.json_normalize(fd_api("/competitions/WC/matches", token).get("matches", []), sep="_")
+    if not ms.empty:
+        ms["fecha"] = pd.to_datetime(ms.utcDate).dt.strftime("%Y-%m-%d %H:%M")
+        ms["marcador"] = ms.score_fullTime_home.astype("Int64").astype(str) + " - " \
+            + ms.score_fullTime_away.astype("Int64").astype(str)
+    return ms
+
+
+def _txt(row, key: str, fallback: str = "—") -> str:
+    v = row.get(key)
+    return v if isinstance(v, str) and v else fallback
+
+
+def _bracket_row(m) -> str:
+    """Una llave del cuadro: escudos + marcador con el ganador en negrita."""
+    def side(prefix):
+        name = _txt(m, f"{prefix}Team_tla", _txt(m, f"{prefix}Team_shortName"))
+        crest = m.get(f"{prefix}Team_crest")
+        img = (f'<img src="{crest}" width="16" style="vertical-align:-3px"> '
+               if isinstance(crest, str) and crest else "")
+        return img, name
+
+    hi, hn = side("home")
+    ai, an = side("away")
+    if m.get("status") == "FINISHED":
+        sh, sa = int(m.score_fullTime_home), int(m.score_fullTime_away)
+        win = m.get("score_winner")
+        h_txt = f"<b>{hn} {sh}</b>" if win == "HOME_TEAM" else f"{hn} {sh}"
+        a_txt = f"<b>{sa} {an}</b>" if win == "AWAY_TEAM" else f"{sa} {an}"
+        body = f"{hi}{h_txt} - {a_txt} {ai}"
+    else:
+        when = pd.to_datetime(m.utcDate).strftime("%d %b · %H:%M")
+        body = f"{hi}{hn} vs {an} {ai}<br><span style='color:#6c757d'>{when}</span>"
+    return f"<div style='font-size:0.85rem;margin-bottom:7px'>{body}</div>"
+
+
+def tab_wc26_overview(t: dict):
+    """Vista de torneo del Mundial 2026: grupos, llaves y goleadores (estilo FIFA)."""
+    token = _wc26_token(t)
+    if not token:
         return
+    st.caption(t["live_cap"])
 
     try:
-        data = fd_api("/competitions/WC/matches", token)
+        standings = fd_api("/competitions/WC/standings", token)
+        ms = _wc26_matches_df(token)
     except requests.HTTPError as e:
         st.error(t["api_err"].format(c=e.response.status_code))
         return
 
-    ms = pd.json_normalize(data.get("matches", []), sep="_")
-    if ms.empty:
-        st.warning(t["no_matches"])
-        return
-    ms["fecha"] = pd.to_datetime(ms.utcDate).dt.strftime("%Y-%m-%d %H:%M")
-    ms["marcador"] = ms.score_fullTime_home.astype("Int64").astype(str) + " - " \
-        + ms.score_fullTime_away.astype("Int64").astype(str)
+    # Llaves primero (el torneo va por eliminatorias)
+    st.subheader(t["bracket"])
+    ko_stages = [s for s in t["stages"] if not ms.empty and (ms.stage == s).any()]
+    if ko_stages:
+        cols = st.columns(len(ko_stages))
+        for col, stage in zip(cols, ko_stages):
+            col.markdown(f"**{t['stages'][stage]}**")
+            for _, m in ms[ms.stage == stage].sort_values("utcDate").iterrows():
+                col.markdown(_bracket_row(m), unsafe_allow_html=True)
 
-    played = ms[ms.status == "FINISHED"]
-    upcoming = ms[ms.status.isin(["SCHEDULED", "TIMED"])]
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader(t["results"].format(n=len(played)))
-        st.dataframe(played.sort_values("utcDate", ascending=False)
-                     [["fecha", "stage", "homeTeam_name", "marcador", "awayTeam_name"]]
-                     .rename(columns={"fecha": t["date"], "homeTeam_name": t["home"],
-                                      "awayTeam_name": t["away"], "stage": t["stage_col"]})
-                     .head(15), use_container_width=True, hide_index=True)
-    with c2:
-        st.subheader(t["upcoming"])
-        st.dataframe(upcoming.sort_values("utcDate")
-                     [["fecha", "stage", "homeTeam_name", "awayTeam_name"]]
-                     .rename(columns={"fecha": t["date"], "homeTeam_name": t["home"],
-                                      "awayTeam_name": t["away"], "stage": t["stage_col"]})
-                     .head(15), use_container_width=True, hide_index=True)
+    # Fase de grupos con escudos
+    st.subheader(t["groups"])
+    groups = [g for g in standings.get("standings", []) if g.get("type") == "TOTAL"]
+    cols = st.columns(3)
+    for i, g in enumerate(groups):
+        rows = [{
+            "crest": e["team"].get("crest"),
+            t["col_team"]: e["team"].get("shortName") or e["team"]["name"],
+            t["col_pj"]: e["playedGames"],
+            t["col_dg"]: e["goalDifference"],
+            t["col_pts"]: e["points"],
+        } for e in g["table"]]
+        with cols[i % 3]:
+            st.markdown(f"**{t['group']} {g.get('group', '').replace('GROUP_', '')}**")
+            st.dataframe(pd.DataFrame(rows),
+                         column_config={"crest": st.column_config.ImageColumn("", width=30)},
+                         hide_index=True, use_container_width=True)
 
     try:
-        scorers = fd_api("/competitions/WC/scorers?limit=15", token)
-        sc = pd.json_normalize(scorers.get("scorers", []), sep="_")
+        sc = pd.json_normalize(
+            fd_api("/competitions/WC/scorers?limit=15", token).get("scorers", []), sep="_")
         if not sc.empty:
             st.subheader(t["top_scorers_26"])
             fig = go.Figure(go.Bar(
@@ -538,6 +606,41 @@ def tab_worldcup_2026(t: dict):
             st.plotly_chart(fig, use_container_width=True)
     except requests.HTTPError:
         st.caption(t["scorers_fail"])
+
+
+def tab_wc26_matches(t: dict):
+    """'Partido a fondo' del 2026: sin event data aún — resultados y calendario."""
+    token = _wc26_token(t)
+    if not token:
+        return
+    st.info(t["no_event_2026"])
+
+    try:
+        ms = _wc26_matches_df(token)
+    except requests.HTTPError as e:
+        st.error(t["api_err"].format(c=e.response.status_code))
+        return
+    if ms.empty:
+        st.warning(t["no_matches"])
+        return
+
+    played = ms[ms.status == "FINISHED"]
+    upcoming = ms[ms.status.isin(["SCHEDULED", "TIMED"])]
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader(t["results"].format(n=len(played)))
+        st.dataframe(played.sort_values("utcDate", ascending=False)
+                     [["fecha", "stage", "homeTeam_name", "marcador", "awayTeam_name"]]
+                     .rename(columns={"fecha": t["date"], "homeTeam_name": t["home"],
+                                      "awayTeam_name": t["away"], "stage": t["stage_col"]})
+                     .head(20), use_container_width=True, hide_index=True)
+    with c2:
+        st.subheader(t["upcoming"])
+        st.dataframe(upcoming.sort_values("utcDate")
+                     [["fecha", "stage", "homeTeam_name", "awayTeam_name"]]
+                     .rename(columns={"fecha": t["date"], "homeTeam_name": t["home"],
+                                      "awayTeam_name": t["away"], "stage": t["stage_col"]})
+                     .head(20), use_container_width=True, hide_index=True)
 
 
 # ---------- Layout ----------
@@ -552,24 +655,29 @@ T = STR[LANG]
 st.title("Soccer Analytics Lab")
 
 # Navegación jerárquica: torneo/liga → temporada → (torneo global | partido a fondo)
+# El Mundial 2026 en curso es una entrada más del selector (vía API, sin event data aún).
 m_all = matches()
 col_c, col_s = st.columns([2, 1])
-comp = col_c.selectbox(T["competition"], sorted(m_all.competition.unique()))
-seasons = sorted(m_all[m_all.competition == comp].season.unique(), reverse=True)
-season = col_s.selectbox(T["season"], seasons)
-m_sel = m_all[(m_all.competition == comp) & (m_all.season == season) & m_all.has_events]
-s_sel = shots()[shots().match_id.isin(m_sel.match_id)]
-cap_l, cap_r = st.columns([3, 2])
-cap_l.caption(T["sel_cap"].format(n=len(m_sel)))
-with cap_r.expander(T["add_more"]):
-    st.markdown(T["add_more_body"])
+comp = col_c.selectbox(T["competition"],
+                       sorted(m_all.competition.unique()) + [T["live_wc"]])
+is_live = comp == T["live_wc"]
 
-t1, t2, t3, t4 = st.tabs(T["tabs"])
+if is_live:
+    col_s.selectbox(T["season"], ["2026"])
+else:
+    seasons = sorted(m_all[m_all.competition == comp].season.unique(), reverse=True)
+    season = col_s.selectbox(T["season"], seasons)
+    m_sel = m_all[(m_all.competition == comp) & (m_all.season == season) & m_all.has_events]
+    s_sel = shots()[shots().match_id.isin(m_sel.match_id)]
+    cap_l, cap_r = st.columns([3, 2])
+    cap_l.caption(T["sel_cap"].format(n=len(m_sel)))
+    with cap_r.expander(T["add_more"]):
+        st.markdown(T["add_more_body"])
+
+t1, t2, t3 = st.tabs(T["tabs"])
 with t1:
-    tab_tournament(T, m_sel, s_sel)
+    tab_wc26_overview(T) if is_live else tab_tournament(T, m_sel, s_sel)
 with t2:
-    tab_match(T, m_sel, s_sel)
+    tab_wc26_matches(T) if is_live else tab_match(T, m_sel, s_sel)
 with t3:
-    tab_worldcup_2026(T)
-with t4:
     st.markdown(METODOLOGIA_ES if LANG == "es" else METODOLOGIA_EN)
