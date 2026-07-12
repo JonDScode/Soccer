@@ -1,0 +1,27 @@
+# Datos: nunca versionar datasets, solo el código que los genera/descarga
+data/raw/*
+data/processed/*
+data/synthetic/*
+!data/**/.gitkeep
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+.pytest_cache/
+
+# DuckDB / SQLite locales
+*.duckdb
+*.db
+
+# Entornos / secretos (API keys de football-data.org, etc.)
+.env
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
