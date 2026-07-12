@@ -22,6 +22,7 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 from soccer import metrics, statsbomb, viz  # noqa: E402
+from soccer.flags import flag  # noqa: E402
 
 
 def _load_dotenv() -> None:
@@ -60,6 +61,10 @@ STR = {
         "stages": {"LAST_32": "Dieciseisavos", "LAST_16": "Octavos",
                    "QUARTER_FINALS": "Cuartos", "SEMI_FINALS": "Semifinales",
                    "THIRD_PLACE": "3er puesto", "FINAL": "Final"},
+        "stages_sb": {"Round of 32": "Dieciseisavos", "Round of 16": "Octavos",
+                      "Quarter-finals": "Cuartos", "Semi-finals": "Semifinales",
+                      "3rd Place Final": "3er puesto", "Final": "Final",
+                      "Second Group Stage": "2ª fase de grupos", "Play-offs": "Repechaje"},
         "no_event_2026": "El event data tiro a tiro del Mundial 2026 aún no es público — "
                          "StatsBomb suele liberarlo meses después de la final. Cuando salga, "
                          "esta pestaña tendrá el análisis completo (xG, redes de pases, "
@@ -125,6 +130,7 @@ STR = {
         "stages": {"LAST_32": "Round of 32", "LAST_16": "Round of 16",
                    "QUARTER_FINALS": "Quarter-finals", "SEMI_FINALS": "Semi-finals",
                    "THIRD_PLACE": "Third place", "FINAL": "Final"},
+        "stages_sb": {},
         "no_event_2026": "Shot-by-shot event data for the 2026 World Cup is not public yet — "
                          "StatsBomb usually releases it months after the final. Once it lands, "
                          "this tab will offer the full deep dive (xG, pass networks, "
@@ -463,6 +469,13 @@ def tab_tournament(t: dict, m: pd.DataFrame, s_all: pd.DataFrame):
     if m.empty:
         st.info(t["no_data"])
         return
+
+    # Cuadro de llaves primero, como en las coberturas de los Mundiales
+    rounds = statsbomb_bracket_rounds(m, s_all, t)
+    if rounds:
+        st.subheader(t["bracket"])
+        st.markdown(bracket_html(rounds), unsafe_allow_html=True)
+
     # las tandas de penales (period 5) no cuentan como tiros ni goles en las stats oficiales
     s = s_all.query("period < 5")
 
@@ -528,27 +541,103 @@ def _txt(row, key: str, fallback: str = "—") -> str:
     return v if isinstance(v, str) and v else fallback
 
 
-def _bracket_row(m) -> str:
-    """Una llave del cuadro: escudos + marcador con el ganador en negrita."""
-    def side(prefix):
-        name = _txt(m, f"{prefix}Team_tla", _txt(m, f"{prefix}Team_shortName"))
-        crest = m.get(f"{prefix}Team_crest")
-        img = (f'<img src="{crest}" width="16" style="vertical-align:-3px"> '
-               if isinstance(crest, str) and crest else "")
-        return img, name
+# ---------- Cuadro de llaves (bracket) genérico, estilo tarjetas ----------
 
-    hi, hn = side("home")
-    ai, an = side("away")
-    if m.get("status") == "FINISHED":
-        sh, sa = int(m.score_fullTime_home), int(m.score_fullTime_away)
-        win = m.get("score_winner")
-        h_txt = f"<b>{hn} {sh}</b>" if win == "HOME_TEAM" else f"{hn} {sh}"
-        a_txt = f"<b>{sa} {an}</b>" if win == "AWAY_TEAM" else f"{sa} {an}"
-        body = f"{hi}{h_txt} - {a_txt} {ai}"
-    else:
-        when = pd.to_datetime(m.utcDate).strftime("%d %b · %H:%M")
-        body = f"{hi}{hn} vs {an} {ai}<br><span style='color:#6c757d'>{when}</span>"
-    return f"<div style='font-size:0.85rem;margin-bottom:7px'>{body}</div>"
+def _bracket_card(card: dict) -> str:
+    rows = ""
+    for name_html, score, win in card["rows"]:
+        weight, opacity = ("700", "1") if win else ("400", ".8")
+        rows += (f"<div style='display:flex;justify-content:space-between;gap:8px;"
+                 f"font-weight:{weight};opacity:{opacity}'>"
+                 f"<span style='white-space:nowrap;overflow:hidden;"
+                 f"text-overflow:ellipsis'>{name_html}</span><span>{score}</span></div>")
+    return (f"<div style='background:rgba(128,128,128,.13);border-radius:10px;"
+            f"padding:7px 10px;margin:3px 0;font-size:.85rem'>"
+            f"<div style='color:#8a8f98;font-size:.7rem;margin-bottom:3px'>{card['when']}</div>"
+            f"{rows}</div>")
+
+
+def bracket_html(rounds: list) -> str:
+    """rounds = [(etiqueta, [tarjetas])] → columnas flexbox alineadas verticalmente,
+    con las tarjetas de cada ronda distribuidas a la altura de sus llaves de origen."""
+    n0 = max(len(cards) for _, cards in rounds)
+    height = max(320, n0 * 96)
+    cols = ""
+    for label, cards in rounds:
+        cards_html = "".join(_bracket_card(c) for c in cards)
+        cols += (f"<div style='flex:1;min-width:0;display:flex;flex-direction:column'>"
+                 f"<div style='font-weight:600;font-size:.9rem;margin-bottom:6px'>{label}</div>"
+                 f"<div style='flex:1;display:flex;flex-direction:column;"
+                 f"justify-content:space-around'>{cards_html}</div></div>")
+    return f"<div style='display:flex;gap:12px;height:{height}px'>{cols}</div>"
+
+
+def statsbomb_bracket_rounds(m_sel: pd.DataFrame, s_all: pd.DataFrame, t: dict) -> list:
+    """Rondas eliminatorias desde los partidos de StatsBomb (banderas emoji).
+
+    Para empates en eliminatorias, la tanda de penales se reconstruye desde los
+    tiros de period 5 del event data para marcar al ganador.
+    """
+    ko = m_sel[~m_sel.stage.str.contains("Group", case=False)].copy()
+    if ko.empty:
+        return []
+    counts = ko.stage.value_counts()
+    order = sorted(counts.index, key=lambda s: (-counts[s], s == "Final"))
+    pens = (s_all[s_all.period == 5].groupby(["match_id", "team"]).is_goal.sum()
+            if not s_all.empty else pd.Series(dtype=int))
+
+    def pen_txt(p):
+        return (f" <span style='font-size:.7rem;color:#8a8f98'>({p})</span>"
+                if p is not None else "")
+
+    rounds = []
+    for stage in order:
+        cards = []
+        for _, m in ko[ko.stage == stage].sort_values("date").iterrows():
+            hs, as_ = int(m.home_score), int(m.away_score)
+            ph = pa = None
+            if hs == as_ and (m.match_id, m.home_team) in pens.index:
+                ph = int(pens.get((m.match_id, m.home_team), 0))
+                pa = int(pens.get((m.match_id, m.away_team), 0))
+            win_h = hs > as_ or (ph is not None and ph > pa)
+            win_a = as_ > hs or (pa is not None and pa > ph)
+            cards.append({
+                "when": pd.to_datetime(m.date).strftime("%d %b %Y"),
+                "rows": [
+                    (f"{flag(m.home_team)} {m.home_team}", f"{hs}{pen_txt(ph)}", win_h),
+                    (f"{flag(m.away_team)} {m.away_team}", f"{as_}{pen_txt(pa)}", win_a),
+                ],
+            })
+        rounds.append((t["stages_sb"].get(stage, stage), cards))
+    return rounds
+
+
+def wc26_bracket_rounds(ms: pd.DataFrame, t: dict) -> list:
+    """Rondas eliminatorias del 2026 desde la API (banderas = crests)."""
+    rounds = []
+    for stage, label in t["stages"].items():
+        stage_ms = ms[ms.stage == stage]
+        if stage_ms.empty:
+            continue
+        cards = []
+        for _, m in stage_ms.sort_values("utcDate").iterrows():
+            def side(prefix):
+                name = _txt(m, f"{prefix}Team_shortName", _txt(m, f"{prefix}Team_name"))
+                crest = m.get(f"{prefix}Team_crest")
+                img = (f'<img src="{crest}" width="16" style="vertical-align:-3px"> '
+                       if isinstance(crest, str) and crest else "")
+                return f"{img}{name}"
+            when = pd.to_datetime(m.utcDate).strftime("%d %b · %H:%M")
+            if m.get("status") == "FINISHED":
+                win = m.get("score_winner")
+                cards.append({"when": when, "rows": [
+                    (side("home"), int(m.score_fullTime_home), win == "HOME_TEAM"),
+                    (side("away"), int(m.score_fullTime_away), win == "AWAY_TEAM")]})
+            else:
+                cards.append({"when": when, "rows": [
+                    (side("home"), "", False), (side("away"), "", False)]})
+        rounds.append((label, cards))
+    return rounds
 
 
 def tab_wc26_overview(t: dict):
@@ -566,14 +655,11 @@ def tab_wc26_overview(t: dict):
         return
 
     # Llaves primero (el torneo va por eliminatorias)
-    st.subheader(t["bracket"])
-    ko_stages = [s for s in t["stages"] if not ms.empty and (ms.stage == s).any()]
-    if ko_stages:
-        cols = st.columns(len(ko_stages))
-        for col, stage in zip(cols, ko_stages):
-            col.markdown(f"**{t['stages'][stage]}**")
-            for _, m in ms[ms.stage == stage].sort_values("utcDate").iterrows():
-                col.markdown(_bracket_row(m), unsafe_allow_html=True)
+    if not ms.empty:
+        rounds = wc26_bracket_rounds(ms, t)
+        if rounds:
+            st.subheader(t["bracket"])
+            st.markdown(bracket_html(rounds), unsafe_allow_html=True)
 
     # Fase de grupos con escudos
     st.subheader(t["groups"])
