@@ -21,7 +21,7 @@ import streamlit as st
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
-from soccer import metrics, statsbomb, viz  # noqa: E402
+from soccer import metrics, statsbomb, viz, xt  # noqa: E402
 from soccer.flags import flag  # noqa: E402
 
 
@@ -99,6 +99,11 @@ STR = {
         "flow_pct": "% de posesión",
         "flow_cap": "Posesión aproximada por proporción de pases en cada ventana — el proxy "
                     "estándar con event data. Las líneas punteadas marcan los goles.",
+        "momentum_title": "Match momentum (xT) — quién genera amenaza, minuto a minuto",
+        "momentum_cap": "Modelo xT (expected threat) propio, entrenado con los 314 partidos del "
+                        "proyecto: cada pase o conducción vale la diferencia de peligro entre la "
+                        "zona de origen y la de destino. Media móvil de 4 minutos — la versión "
+                        "abierta del gráfico de momentum de las transmisiones del Mundial.",
         "player_sec": "Análisis por jugador", "player": "Jugador",
         "m_passes": "Pases", "m_pass_pct": "% pase", "m_key": "Pases clave", "m_shots": "Tiros",
         "m_goals": "Goles", "m_carries": "Conducciones", "m_dribbles": "Regates",
@@ -172,6 +177,11 @@ STR = {
         "flow_pct": "% possession",
         "flow_cap": "Possession approximated by pass share per window — the standard proxy "
                     "with event data. Dotted lines mark goals.",
+        "momentum_title": "Match momentum (xT) — who is creating threat, minute by minute",
+        "momentum_cap": "Our own xT (expected threat) model, trained on the project's 314 matches: "
+                        "each pass or carry is worth the danger difference between its origin and "
+                        "destination zones. 4-minute rolling mean — the open version of the "
+                        "broadcast momentum graph.",
         "player_sec": "Player analysis", "player": "Player",
         "m_passes": "Passes", "m_pass_pct": "Pass %", "m_key": "Key passes", "m_shots": "Shots",
         "m_goals": "Goals", "m_carries": "Carries", "m_dribbles": "Dribbles",
@@ -332,6 +342,11 @@ def nicknames() -> dict:
 
 
 @st.cache_data
+def xt_grid():
+    return xt.load_grid()
+
+
+@st.cache_data
 def results() -> pd.DataFrame:
     """Resultados completos de todos los Mundiales 1930-2022 (Fjelstul database)."""
     path = statsbomb.PROCESSED / "results_matches.parquet"
@@ -442,6 +457,31 @@ def tab_match(t: dict, m: pd.DataFrame, s_all: pd.DataFrame):
                       **{**PLOTLY_LAYOUT, "hovermode": "closest"})
     st.plotly_chart(fig, use_container_width=True)
     st.caption(t["flow_cap"])
+
+    # ---- Match momentum (xT) ----
+    grid = xt_grid()
+    if grid is not None:
+        mom = xt.xt_momentum(ev, team_a, grid)
+        if not mom.empty:
+            pos = mom.momentum.clip(lower=0)
+            neg = mom.momentum.clip(upper=0)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=mom.minute, y=pos, fill="tozeroy", mode="none",
+                                     fillcolor="rgba(26,120,207,.75)", name=team_a,
+                                     hovertemplate="min %{x}: %{y:.3f}<extra>" + team_a + "</extra>"))
+            fig.add_trace(go.Scatter(x=mom.minute, y=neg, fill="tozeroy", mode="none",
+                                     fillcolor="rgba(230,97,0,.75)", name=team_b,
+                                     hovertemplate="min %{x}: %{y:.3f}<extra>" + team_b + "</extra>"))
+            for _, g in s[s.is_goal].iterrows():
+                fig.add_vline(x=g.minute, line=dict(color=INK, width=1, dash="dot"),
+                              annotation_text=viz.short_name(g.player, nicknames()),
+                              annotation_font_size=9, annotation_position="top")
+            fig.add_hline(y=0, line=dict(color=MUTED, width=1))
+            fig.update_layout(title=t["momentum_title"], xaxis_title=t["minute"],
+                              yaxis_title="Δ xT", height=340,
+                              **{**PLOTLY_LAYOUT, "hovermode": "x"})
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption(t["momentum_cap"])
 
     # ---- Jugador a jugador ----
     st.subheader(t["player_sec"])

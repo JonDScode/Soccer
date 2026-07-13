@@ -10,10 +10,9 @@ Fases pensadas para que cada una deje un entregable de portafolio por sí sola. 
 - Notebook: shot maps, pass networks, mapas de calor de presión de un equipo.
 - **Entregable**: notebook con 4-5 visualizaciones de nivel publicable.
 
-## Fase 2 — Modelo de xG propio
-- Con los tiros de StatsBomb (o Understat), entrenar un modelo de probabilidad de gol: regresión logística (baseline) → XGBoost (distancia, ángulo, parte del cuerpo, tipo de jugada).
-- Comparar contra el xG oficial de StatsBomb (calibración, Brier score).
-- **Entregable**: notebook + módulo `src/soccer/xg.py` + writeup de qué features importan.
+## Fase 2 — Modelo de xG propio ✅ + xT ✅
+- ✅ [notebooks/02_modelo_xg.ipynb](../notebooks/02_modelo_xg.ipynb): logística y gradient boosting entrenados con ~6.500 tiros (2018, Euro 24, femeninos, históricos) y evaluados en el Mundial 2022 sin verlo. Brier 0.082-0.084 vs 0.076 de StatsBomb; correlación 0.81 tiro a tiro. La brecha se explica por sus features de datos 360 (posición del portero y defensores).
+- ✅ **xT (expected threat)**: cadena de Markov 16x12 entrenada con 492k pases/conducciones ([src/soccer/xt.py](../src/soccer/xt.py) + [models/xt_grid.json](../models/xt_grid.json)) — alimenta el gráfico de **match momentum** del dashboard, la versión abierta del de las transmisiones del Mundial.
 
 ## Fase 3 — Forecasting de resultados
 - Con football-data.co.uk (10+ temporadas): modelo de Poisson bivariado / Dixon-Coles, y comparación contra ratings Elo (Club Elo) y contra las cuotas de mercado.

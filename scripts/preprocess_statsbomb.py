@@ -64,6 +64,13 @@ def build_shots(matches: pd.DataFrame) -> pd.DataFrame:
                 "body_part": e["shot"].get("body_part", {}).get("name"),
                 "shot_type": e["shot"].get("type", {}).get("name"),
                 "is_goal": e["shot"]["outcome"]["name"] == "Goal",
+                # features para el modelo de xG propio (Fase 2)
+                "under_pressure": bool(e.get("under_pressure", False)),
+                "first_time": bool(e["shot"].get("first_time", False)),
+                "one_on_one": bool(e["shot"].get("one_on_one", False)),
+                "open_goal": bool(e["shot"].get("open_goal", False)),
+                "technique": e["shot"].get("technique", {}).get("name"),
+                "play_pattern": e.get("play_pattern", {}).get("name"),
             })
     return pd.DataFrame(rows)
 
