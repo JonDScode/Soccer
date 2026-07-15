@@ -1,7 +1,11 @@
-# Datos: nunca versionar datasets, solo el código que los genera/descarga
+# Datos: no versionar datasets crudos, solo el código que los genera/descarga.
+# Excepción: los Parquet procesados (~300 KB) van al repo para que el deploy
+# en Streamlit Cloud arranque sin pipeline; los eventos crudos se descargan
+# al vuelo desde StatsBomb cuando no están en disco.
 data/raw/*
 data/processed/*
 data/synthetic/*
+!data/processed/*.parquet
 !data/**/.gitkeep
 
 # Python

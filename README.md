@@ -58,7 +58,7 @@ Soccer/
 # 1. Entorno virtual (recomendado Python 3.11/3.12 por compatibilidad de librerías)
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # entorno completo (la app sola: requirements.txt)
 
 # 2. Datos reales (StatsBomb Open Data) — descarga los torneos que quieras
 python scripts/download_statsbomb.py --list                      # ver competiciones disponibles

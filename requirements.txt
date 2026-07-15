@@ -1,32 +1,18 @@
-# Core
+# Dependencias de la APP (lo que instala Streamlit Cloud en el deploy).
+# Para el entorno completo de desarrollo (notebooks, scraping, ML):
+#     pip install -r requirements-dev.txt
+
 pandas>=2.2
 numpy>=1.26
 requests>=2.31
 pyarrow>=15.0
-
-# Acceso a datos de fútbol
-statsbombpy>=1.13
-soccerdata>=1.7
 
 # Visualización
 matplotlib>=3.8
 mplsoccer>=1.4
 seaborn>=0.13
 scipy>=1.11
-
-# ML
-scikit-learn>=1.4
-xgboost>=2.0
-
-# Almacenamiento analítico
-duckdb>=1.0
-
-# Notebooks y app
-jupyter>=1.0
-jupytext>=1.16
-streamlit>=1.35
 plotly>=5.20
 
-# Fases avanzadas (descomentar cuando se necesiten)
-# socceraction>=1.5    # VAEP / xT
-# kloppy>=3.15         # normalización de eventos/tracking
+# App
+streamlit>=1.35

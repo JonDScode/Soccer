@@ -592,6 +592,11 @@ def tab_tournament(t: dict, m: pd.DataFrame, s_all: pd.DataFrame, r: pd.DataFram
 def _wc26_token(t: dict) -> str | None:
     token = os.getenv("FOOTBALL_DATA_TOKEN")
     if not token:
+        try:
+            token = st.secrets["FOOTBALL_DATA_TOKEN"]  # Streamlit Cloud
+        except (KeyError, FileNotFoundError):
+            token = None
+    if not token:
         st.info(t["no_key"])
     return token
 
