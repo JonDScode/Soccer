@@ -38,18 +38,31 @@ def main() -> None:
         page.screenshot(path=OUT / "02_final_xg_race.png")
         print("2/4 final + carrera de xG")
 
-        # 3. Match momentum (xT) — el título vive dentro del SVG de plotly,
-        # así que anclamos en el caption de texto que está debajo
-        page.get_by_text("Modelo xT (expected threat)").first.scroll_into_view_if_needed()
+        # 3. Match momentum (xT): captura del elemento del gráfico, completo.
+        # OJO: streamlit deja en el DOM los charts de las pestañas ocultas, así
+        # que el índice es global: 0-1 son de la pestaña Torneo (mapa, goleadores)
+        # y en Partido a fondo siguen 2 carrera de xG, 3 posesión, 4 momentum
+        charts = page.locator('[data-testid="stPlotlyChart"]')
+        charts.nth(4).scroll_into_view_if_needed()
         page.wait_for_timeout(2500)
-        page.screenshot(path=OUT / "03_momentum_xt.png")
-        print("3/4 momentum xT")
+        charts.nth(4).screenshot(path=OUT / "03_momentum_xt.png")
+        print("3/5 momentum xT")
 
-        # 4. Red de pases + posesión (scroll intermedio)
-        page.get_by_text("Redes de pases").first.scroll_into_view_if_needed()
+        # 4. Shot map: la imagen del pyplot completa, sin recortes
+        # (las stImage del tab son: 0 shot map, 1-2 redes, 3-4 mapas del jugador)
+        imgs = page.locator('[data-testid="stImage"] img')
+        imgs.nth(0).scroll_into_view_if_needed()
         page.wait_for_timeout(2000)
-        page.screenshot(path=OUT / "04_redes_de_pases.png")
-        print("4/4 redes de pases")
+        imgs.nth(0).screenshot(path=OUT / "04_shot_map.png")
+        print("4/5 shot map")
+
+        # 5. Las dos redes de pases: el bloque horizontal que las contiene
+        block = (page.locator('[data-testid="stHorizontalBlock"]')
+                 .filter(has=page.locator('[data-testid="stImage"]')).first)
+        block.scroll_into_view_if_needed()
+        page.wait_for_timeout(2000)
+        block.screenshot(path=OUT / "05_redes_de_pases.png")
+        print("5/5 redes de pases")
 
         browser.close()
     print(f"Listo -> {OUT}")
