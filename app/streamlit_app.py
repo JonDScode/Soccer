@@ -14,6 +14,7 @@ import os
 import sys
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import pandas as pd
 import plotly.graph_objects as go
 import requests
@@ -331,7 +332,19 @@ def shots() -> pd.DataFrame:
     return statsbomb.load_shots()
 
 
-@st.cache_data
+def draw(fig) -> None:
+    """Renderiza una figura de matplotlib y la CIERRA.
+
+    Sin plt.close, matplotlib acumula cada figura en su registro y en un
+    servidor de larga vida (Streamlit Cloud) termina en OOM/segfault.
+    """
+    st.pyplot(fig, width="stretch")
+    plt.close(fig)
+
+
+# max_entries acota la memoria: cada partido aplanado pesa decenas de MB y sin
+# tope el caché crece hasta tumbar el contenedor de Streamlit Cloud
+@st.cache_data(max_entries=6, ttl=3600)
 def events(match_id: int) -> pd.DataFrame:
     return statsbomb.load_events(match_id)
 
@@ -416,22 +429,19 @@ def tab_match(t: dict, m: pd.DataFrame, s_all: pd.DataFrame):
             hovertemplate=t["goal"] + ": %{text} %{x}'<extra></extra>"))
     fig.update_layout(title=t["race_title"], xaxis_title=t["minute"],
                       yaxis_title=t["cum_xg"], **PLOTLY_LAYOUT)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     st.subheader(t["shot_map"])
     st.caption(t["shot_map_cap"].format(a=team_a))
-    st.pyplot(viz.shot_map_fig(s, team_a, team_b, nicks=nicknames(), tr=t["viz_tr"]),
-              use_container_width=True)
+    draw(viz.shot_map_fig(s, team_a, team_b, nicks=nicknames(), tr=t["viz_tr"]))
 
     st.subheader(t["networks"])
     ev = events(int(row.match_id))
     col1, col2 = st.columns(2)
     with col1:
-        st.pyplot(viz.pass_network_fig(ev, team_a, viz.PITCH_A, nicks=nicknames(),
-                                       tr=t["viz_tr"]), use_container_width=True)
+        draw(viz.pass_network_fig(ev, team_a, viz.PITCH_A, nicks=nicknames(), tr=t["viz_tr"]))
     with col2:
-        st.pyplot(viz.pass_network_fig(ev, team_b, viz.PITCH_B, nicks=nicknames(),
-                                       tr=t["viz_tr"]), use_container_width=True)
+        draw(viz.pass_network_fig(ev, team_b, viz.PITCH_B, nicks=nicknames(), tr=t["viz_tr"]))
 
     # ---- Posesión ----
     st.subheader(t["possession"])
@@ -455,7 +465,7 @@ def tab_match(t: dict, m: pd.DataFrame, s_all: pd.DataFrame):
                       xaxis_title=t["minute"], yaxis_title=t["flow_pct"],
                       yaxis=dict(range=[0, 100]), height=340,
                       **{**PLOTLY_LAYOUT, "hovermode": "closest"})
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     st.caption(t["flow_cap"])
 
     # ---- Match momentum (xT) ----
@@ -480,7 +490,7 @@ def tab_match(t: dict, m: pd.DataFrame, s_all: pd.DataFrame):
             fig.update_layout(title=t["momentum_title"], xaxis_title=t["minute"],
                               yaxis_title="Δ xT", height=340,
                               **{**PLOTLY_LAYOUT, "hovermode": "x"})
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
             st.caption(t["momentum_cap"])
 
     # ---- Jugador a jugador ----
@@ -511,11 +521,9 @@ def tab_match(t: dict, m: pd.DataFrame, s_all: pd.DataFrame):
 
     col1, col2 = st.columns(2)
     with col1:
-        st.pyplot(viz.touch_map_fig(ev, player, color, display_name=display, tr=t["viz_tr"]),
-                  use_container_width=True)
+        draw(viz.touch_map_fig(ev, player, color, display_name=display, tr=t["viz_tr"]))
     with col2:
-        st.pyplot(viz.pass_map_fig(ev, player, color, display_name=display, tr=t["viz_tr"]),
-                  use_container_width=True)
+        draw(viz.pass_map_fig(ev, player, color, display_name=display, tr=t["viz_tr"]))
 
     act = metrics.player_activity(ev, player)
     fig = go.Figure(go.Bar(x=act.tbin + 2.5, y=act.acciones, width=4.6, marker_color=BLUE,
@@ -523,7 +531,7 @@ def tab_match(t: dict, m: pd.DataFrame, s_all: pd.DataFrame):
     fig.update_layout(title=t["involvement"], xaxis_title=t["minute"],
                       yaxis_title=t["actions_y"], height=300,
                       **{**PLOTLY_LAYOUT, "hovermode": "closest"})
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 # ---------- Tab 2: Torneo 2022 ----------
@@ -571,7 +579,7 @@ def tab_tournament(t: dict, m: pd.DataFrame, s_all: pd.DataFrame, r: pd.DataFram
     fig.update_layout(title=t["map_title"], xaxis_title=t["xg_for"], yaxis_title=t["xg_against"],
                       height=560, **{**PLOTLY_LAYOUT, "hovermode": "closest"})
     fig.update_yaxes(autorange="reversed")  # arriba = conceder poco (mejor)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     st.caption(t["map_cap"])
 
     players = (s.groupby("player").agg(goles=("is_goal", "sum"), xg=("xg", "sum"),
@@ -583,7 +591,7 @@ def tab_tournament(t: dict, m: pd.DataFrame, s_all: pd.DataFrame, r: pd.DataFram
     fig2.add_trace(go.Bar(x=players.index, y=players.xg.round(2), name="xG", marker_color=ORANGE))
     fig2.update_layout(title=t["scorers_title"], barmode="group", bargap=0.25,
                        **{**PLOTLY_LAYOUT, "hovermode": "x"})
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, width="stretch")
     st.caption(t["scorers_cap"])
 
 
@@ -775,7 +783,7 @@ def tab_wc26_overview(t: dict):
             st.markdown(f"**{t['group']} {g.get('group', '').replace('GROUP_', '')}**")
             st.dataframe(pd.DataFrame(rows),
                          column_config={"crest": st.column_config.ImageColumn("", width=30)},
-                         hide_index=True, use_container_width=True)
+                         hide_index=True, width="stretch")
 
     try:
         sc = pd.json_normalize(
@@ -787,7 +795,7 @@ def tab_wc26_overview(t: dict):
                 text=sc.team_name,
                 hovertemplate="<b>%{x}</b> (%{text})<br>%{y}<extra></extra>"))
             fig.update_layout(yaxis_title=t["goals_lbl"], **{**PLOTLY_LAYOUT, "hovermode": "x"})
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
     except requests.HTTPError:
         st.caption(t["scorers_fail"])
 
@@ -817,14 +825,14 @@ def tab_wc26_matches(t: dict):
                      [["fecha", "stage", "homeTeam_name", "marcador", "awayTeam_name"]]
                      .rename(columns={"fecha": t["date"], "homeTeam_name": t["home"],
                                       "awayTeam_name": t["away"], "stage": t["stage_col"]})
-                     .head(20), use_container_width=True, hide_index=True)
+                     .head(20), width="stretch", hide_index=True)
     with c2:
         st.subheader(t["upcoming"])
         st.dataframe(upcoming.sort_values("utcDate")
                      [["fecha", "stage", "homeTeam_name", "awayTeam_name"]]
                      .rename(columns={"fecha": t["date"], "homeTeam_name": t["home"],
                                       "awayTeam_name": t["away"], "stage": t["stage_col"]})
-                     .head(20), use_container_width=True, hide_index=True)
+                     .head(20), width="stretch", hide_index=True)
 
 
 # ---------- Layout ----------
