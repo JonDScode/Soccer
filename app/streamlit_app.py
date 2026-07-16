@@ -82,12 +82,16 @@ STR = {
                          "resultados y calendario:",
         "sel_cap": "{n} partidos con event data de StatsBomb",
         "add_more": "Agregar más torneos o ligas",
-        "add_more_body": "StatsBomb Open Data tiene más competiciones (Mundiales, Euros, "
-                         "La Liga de la era Messi, Mundial femenino...). Para sumar una:\n"
-                         "```\npython scripts/download_statsbomb.py --list\n"
-                         "python scripts/download_statsbomb.py --competition <id> --season <id>\n"
-                         "python scripts/preprocess_statsbomb.py\n```\n"
-                         "Al recargar, aparece en los selectores.",
+        "add_more_body": "Elige cualquier competición del catálogo abierto de StatsBomb "
+                         "(Euros, Champions, La Liga de la era Messi, Bundesliga...) y "
+                         "descárgala con un clic. Los torneos grandes tardan unos minutos.",
+        "add_pick": "Competición", "add_btn": "Descargar y agregar",
+        "add_progress": "Descargando {label} ({i}/{n})",
+        "add_done": "{n} partidos agregados. Ya aparece en los selectores.",
+        "add_none": "Esa competición ya está descargada.",
+        "add_err": "No se pudo descargar ({e}). Intenta de nuevo en un momento.",
+        "add_note": "En la versión en la nube, lo agregado permanece hasta el próximo "
+                    "reinicio de la app.",
         "no_data": "No hay event data descargado para esta selección.",
         "match": "Partido", "shots": "Tiros", "stage": "Fase",
         "pens_note": "El partido se definió por penales; la tanda se excluye de tiros y xG.",
@@ -160,12 +164,15 @@ STR = {
                          "results and fixtures:",
         "sel_cap": "{n} matches with StatsBomb event data",
         "add_more": "Add more tournaments or leagues",
-        "add_more_body": "StatsBomb Open Data has more competitions (World Cups, Euros, "
-                         "Messi-era La Liga, Women's World Cup...). To add one:\n"
-                         "```\npython scripts/download_statsbomb.py --list\n"
-                         "python scripts/download_statsbomb.py --competition <id> --season <id>\n"
-                         "python scripts/preprocess_statsbomb.py\n```\n"
-                         "Reload and it shows up in the selectors.",
+        "add_more_body": "Pick any competition from StatsBomb's open catalogue "
+                         "(Euros, Champions League, Messi-era La Liga, Bundesliga...) and "
+                         "download it in one click. Large tournaments take a few minutes.",
+        "add_pick": "Competition", "add_btn": "Download and add",
+        "add_progress": "Downloading {label} ({i}/{n})",
+        "add_done": "{n} matches added. It now shows up in the selectors.",
+        "add_none": "That competition is already downloaded.",
+        "add_err": "Download failed ({e}). Please try again in a moment.",
+        "add_note": "On the cloud version, added data persists until the next app restart.",
         "no_data": "No event data downloaded for this selection.",
         "match": "Match", "shots": "Shots", "stage": "Stage",
         "pens_note": "Decided on penalties; the shootout is excluded from shots and xG.",
@@ -357,6 +364,11 @@ def nicknames() -> dict:
 @st.cache_data
 def xt_grid():
     return xt.load_grid()
+
+
+@st.cache_data(ttl=86400)
+def sb_catalog() -> pd.DataFrame:
+    return statsbomb.list_competitions()
 
 
 @st.cache_data
@@ -871,6 +883,29 @@ else:
     cap_l.caption(T["sel_cap"].format(n=len(m_sel)) if len(m_sel) else T["results_only"])
     with cap_r.expander(T["add_more"]):
         st.markdown(T["add_more_body"])
+        try:
+            catalog = sb_catalog()
+            have = set(zip(m_all.competition_id, m_all.season_id))
+            missing = catalog[~catalog.apply(
+                lambda r: (r.competition_id, r.season_id) in have, axis=1)]
+            labels = missing.competition_name + " — " + missing.season_name
+            pick = st.selectbox(T["add_pick"], labels)
+            if st.button(T["add_btn"], type="primary"):
+                row = missing[labels == pick].iloc[0]
+                bar = st.progress(0.0)
+                added = statsbomb.download_and_ingest(
+                    int(row.competition_id), int(row.season_id),
+                    progress=lambda i, n, label: bar.progress(
+                        i / n, text=T["add_progress"].format(label=label, i=i, n=n)))
+                st.cache_data.clear()
+                if added:
+                    st.success(T["add_done"].format(n=added))
+                    st.rerun()
+                else:
+                    st.info(T["add_none"])
+        except requests.RequestException as e:
+            st.warning(T["add_err"].format(e=type(e).__name__))
+        st.caption(T["add_note"])
 
 t1, t2, t3 = st.tabs(T["tabs"])
 with t1:
