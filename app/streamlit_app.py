@@ -90,8 +90,6 @@ STR = {
         "add_done": "{n} partidos agregados. Ya aparece en los selectores.",
         "add_none": "Esa competición ya está descargada.",
         "add_err": "No se pudo descargar ({e}). Intenta de nuevo en un momento.",
-        "add_note": "En la versión en la nube, lo agregado permanece hasta el próximo "
-                    "reinicio de la app.",
         "no_data": "No hay event data descargado para esta selección.",
         "match": "Partido", "shots": "Tiros", "stage": "Fase",
         "pens_note": "El partido se definió por penales; la tanda se excluye de tiros y xG.",
@@ -172,7 +170,6 @@ STR = {
         "add_done": "{n} matches added. It now shows up in the selectors.",
         "add_none": "That competition is already downloaded.",
         "add_err": "Download failed ({e}). Please try again in a moment.",
-        "add_note": "On the cloud version, added data persists until the next app restart.",
         "no_data": "No event data downloaded for this selection.",
         "match": "Match", "shots": "Shots", "stage": "Stage",
         "pens_note": "Decided on penalties; the shootout is excluded from shots and xG.",
@@ -905,7 +902,6 @@ else:
                     st.info(T["add_none"])
         except Exception as e:  # panel opcional: nunca debe tumbar la app entera
             st.warning(T["add_err"].format(e=type(e).__name__))
-        st.caption(T["add_note"])
 
 t1, t2, t3 = st.tabs(T["tabs"])
 with t1:
