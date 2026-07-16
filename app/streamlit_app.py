@@ -903,7 +903,7 @@ else:
                     st.rerun()
                 else:
                     st.info(T["add_none"])
-        except requests.RequestException as e:
+        except Exception as e:  # panel opcional: nunca debe tumbar la app entera
             st.warning(T["add_err"].format(e=type(e).__name__))
         st.caption(T["add_note"])
 
