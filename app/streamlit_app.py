@@ -815,8 +815,12 @@ def results_bracket_rounds(df: pd.DataFrame, t: dict, max_col: int = 12) -> list
     if df.empty:
         return []
     d = df.copy()
-    if len(d) > 40:  # torneo moderno completo: solo eliminatorias
-        d = d[~d.stage.str.contains("group", case=False)]
+    if len(d) > 40:  # torneo grande: fuera la primera fase de grupos, PERO la
+        # segunda fase de grupos (formato 1974-1982) se conserva: era la ronda
+        # equivalente a octavos/cuartos
+        first_group = (d.stage.str.contains("group", case=False)
+                       & ~d.stage.str.contains("second", case=False))
+        d = d[~first_group]
     if d.empty:
         return []
 
