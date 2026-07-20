@@ -828,7 +828,19 @@ def results_bracket_rounds(df: pd.DataFrame, t: dict, max_col: int = 12) -> list
         return (f" <span style='font-size:.7rem;color:#8a8f98'>({int(p)})</span>"
                 if pd.notna(p) else "")
 
-    order = d.groupby("stage").date.min().sort_values().index
+    def stage_rank(s):
+        """Desempate cuando dos fases comparten fecha (en 1938 el 3er puesto y
+        la final se jugaron el mismo día): 3er puesto siempre antes de la final."""
+        sl = s.lower()
+        if "third" in sl or "3rd" in sl:
+            return 98
+        if "final" in sl and "group" not in sl and "round" not in sl:
+            return 99
+        return 50
+
+    order = (d.groupby("stage").date.min().reset_index()
+             .assign(rank=lambda x: x.stage.map(stage_rank))
+             .sort_values(["date", "rank"]).stage)
     rounds = []
     for stage in order:
         cards = []
