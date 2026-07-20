@@ -32,3 +32,7 @@ Thumbs.db
 
 # Assets personales de publicaciones
 reports/linkedin/
+
+# Mundial 2026 (datos de WhoScored via nlbair/wc2026-events, sin licencia): solo uso local
+notebooks/03_mundial2026_grafos.ipynb
+reports/figures/*_LOCAL*
