@@ -624,8 +624,16 @@ def _wc26_matches_df(token: str) -> pd.DataFrame:
     ms = pd.json_normalize(fd_api("/competitions/WC/matches", token).get("matches", []), sep="_")
     if not ms.empty:
         ms["fecha"] = pd.to_datetime(ms.utcDate).dt.strftime("%Y-%m-%d %H:%M")
-        ms["marcador"] = ms.score_fullTime_home.astype("Int64").astype(str) + " - " \
-            + ms.score_fullTime_away.astype("Int64").astype(str)
+        # OJO API v4: en partidos con tanda, fullTime SUMA los penales; el
+        # marcador real de los 120' se obtiene restándolos
+        ms["ft_home"] = ms.score_fullTime_home.astype("Float64")
+        ms["ft_away"] = ms.score_fullTime_away.astype("Float64")
+        if "score_penalties_home" in ms:
+            pen = ms.score_penalties_home.notna()
+            ms.loc[pen, "ft_home"] -= ms.loc[pen, "score_penalties_home"]
+            ms.loc[pen, "ft_away"] -= ms.loc[pen, "score_penalties_away"]
+        ms["marcador"] = ms.ft_home.astype("Int64").astype(str) + " - " \
+            + ms.ft_away.astype("Int64").astype(str)
     return ms
 
 
@@ -747,9 +755,16 @@ def wc26_bracket_rounds(ms: pd.DataFrame, t: dict) -> list:
             when = pd.to_datetime(m.utcDate).strftime("%d %b · %H:%M")
             if m.get("status") == "FINISHED":
                 win = m.get("score_winner")
+
+                def pen_txt(p):
+                    return (f" <span style='font-size:.7rem;color:#8a8f98'>({int(p)})</span>"
+                            if pd.notna(p) else "")
+
+                ph = m.get("score_penalties_home")
+                pa = m.get("score_penalties_away")
                 cards.append({"when": when, "rows": [
-                    (side("home"), int(m.score_fullTime_home), win == "HOME_TEAM"),
-                    (side("away"), int(m.score_fullTime_away), win == "AWAY_TEAM")]})
+                    (side("home"), f"{int(m.ft_home)}{pen_txt(ph)}", win == "HOME_TEAM"),
+                    (side("away"), f"{int(m.ft_away)}{pen_txt(pa)}", win == "AWAY_TEAM")]})
             else:
                 cards.append({"when": when, "rows": [
                     (side("home"), "", False), (side("away"), "", False)]})

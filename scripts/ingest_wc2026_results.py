@@ -46,7 +46,16 @@ def main() -> None:
     for m in r.json()["matches"]:
         if m["status"] != "FINISHED":
             continue
-        pens = m["score"].get("penalties") or {}
+        score = m["score"]
+        pens = score.get("penalties") or {}
+        if pens.get("home") is not None:
+            # OJO API v4: en partidos con tanda, fullTime SUMA los penales.
+            # El marcador real de los 120' es regularTime + extraTime.
+            rt, et = score.get("regularTime") or {}, score.get("extraTime") or {}
+            hs = (rt.get("home") or 0) + (et.get("home") or 0)
+            as_ = (rt.get("away") or 0) + (et.get("away") or 0)
+        else:
+            hs, as_ = score["fullTime"]["home"], score["fullTime"]["away"]
         rows.append({
             "competition": "FIFA World Cup",
             "season": "2026",
@@ -54,8 +63,8 @@ def main() -> None:
             "date": m["utcDate"][:10],
             "home_team": m["homeTeam"]["name"],
             "away_team": m["awayTeam"]["name"],
-            "home_score": m["score"]["fullTime"]["home"],
-            "away_score": m["score"]["fullTime"]["away"],
+            "home_score": hs,
+            "away_score": as_,
             "pen_home": pens.get("home"),
             "pen_away": pens.get("away"),
         })
