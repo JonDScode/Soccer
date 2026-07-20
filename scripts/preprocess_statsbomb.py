@@ -128,7 +128,14 @@ def main() -> None:
     shots.to_parquet(OUT / "shots.parquet", index=False)
     players.to_parquet(OUT / "players.parquet", index=False)
     if not results.empty:
-        results.to_parquet(OUT / "results_matches.parquet", index=False)
+        # preservar temporadas ingresadas por otras vías (p. ej. el 2026 vía API)
+        out_path = OUT / "results_matches.parquet"
+        if out_path.exists():
+            old = pd.read_parquet(out_path)
+            new_keys = set(zip(results.competition, results.season))
+            extra = old[~old.apply(lambda r: (r.competition, r.season) in new_keys, axis=1)]
+            results = pd.concat([results, extra], ignore_index=True)
+        results.to_parquet(out_path, index=False)
 
     print(f"{len(matches)} partidos ({with_events.sum()} con eventos), "
           f"{len(shots)} tiros, {len(players)} jugadores")
