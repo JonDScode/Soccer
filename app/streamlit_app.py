@@ -553,12 +553,19 @@ def tab_tournament(t: dict, m: pd.DataFrame, s_all: pd.DataFrame, r: pd.DataFram
         return
 
     # Cuadro primero, como en las coberturas: Fjelstul (completo) si existe,
-    # si no, los partidos de StatsBomb normalizados
+    # si no, los partidos de StatsBomb normalizados. Torneos grandes usan el
+    # cuadro espejado estilo póster; si el árbol no se puede reconstruir
+    # (formatos antiguos, datos parciales) se cae al layout plano.
     src = r if not r.empty else _sb_results(m, s_all)
-    rounds = results_bracket_rounds(src, t)
-    if rounds:
+    split = results_bracket_split(src, t) if len(src) > 40 else None
+    if split:
         st.subheader(t["bracket"])
-        st.markdown(bracket_html(rounds), unsafe_allow_html=True)
+        st.markdown(split_bracket_html(*split), unsafe_allow_html=True)
+    else:
+        rounds = results_bracket_rounds(src, t)
+        if rounds:
+            st.subheader(t["bracket"])
+            st.markdown(bracket_html(rounds), unsafe_allow_html=True)
 
     if m.empty or s_all.empty:
         st.info(t["results_only"])
@@ -693,6 +700,110 @@ def _sb_results(m_sel: pd.DataFrame, s_all: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _result_card(m, t: dict) -> dict:
+    """Tarjeta de una llave desde una fila de resultados (con tanda si la hubo)."""
+    def pen_txt(p):
+        return (f" <span style='font-size:.7rem;color:#8a8f98'>({int(p)})</span>"
+                if pd.notna(p) else "")
+
+    hs, as_ = int(m.home_score), int(m.away_score)
+    ph, pa = m.get("pen_home"), m.get("pen_away")
+    win_h = hs > as_ or (pd.notna(ph) and ph > pa)
+    win_a = as_ > hs or (pd.notna(pa) and pa > ph)
+    return {
+        "when": pd.to_datetime(m.date).strftime("%d %b %Y"),
+        "rows": [
+            (f"{flag(m.home_team)} {m.home_team}", f"{hs}{pen_txt(ph)}", win_h),
+            (f"{flag(m.away_team)} {m.away_team}", f"{as_}{pen_txt(pa)}", win_a),
+        ],
+    }
+
+
+def _match_winner(m):
+    if m.home_score > m.away_score:
+        return m.home_team
+    if m.away_score > m.home_score:
+        return m.away_team
+    if pd.notna(m.get("pen_home")):
+        return m.home_team if m.pen_home > m.pen_away else m.away_team
+    return None
+
+
+def results_bracket_split(df: pd.DataFrame, t: dict):
+    """Cuadro espejado estilo póster: dos mitades que convergen en la final.
+
+    La posición de cada llave no viene en los datos: se reconstruye el árbol
+    desde la final hacia atrás (el ganador de cada llave juega la siguiente).
+    Devuelve (izquierda, derecha, centro) o None si el torneo no forma un
+    árbol completo (fase a medias, formatos antiguos) — el caller cae al plano.
+    """
+    ko = df[~df.stage.str.contains("group", case=False)].copy()
+    if ko.empty:
+        return None
+    order = ko.groupby("stage").date.min().sort_values().index.tolist()
+    third = [s for s in order if "third" in s.lower() or "3rd" in s.lower()]
+    rounds = [s for s in order if s not in third]
+    if len(rounds) < 3:
+        return None
+    per_round = [ko[ko.stage == s].reset_index(drop=True) for s in rounds]
+    if len(per_round[-1]) != 1:
+        return None
+    for a, b in zip(per_round, per_round[1:]):
+        if len(a) != 2 * len(b):
+            return None
+
+    levels = [[per_round[-1].iloc[0]]]
+    for depth in range(len(rounds) - 1, 0, -1):
+        prev = per_round[depth - 1]
+        nxt = []
+        for m in levels[-1]:
+            f_home = prev[prev.apply(lambda r: _match_winner(r) == m.home_team, axis=1)]
+            f_away = prev[prev.apply(lambda r: _match_winner(r) == m.away_team, axis=1)]
+            if len(f_home) != 1 or len(f_away) != 1:
+                return None
+            nxt.extend([f_home.iloc[0], f_away.iloc[0]])
+        levels.append(nxt)
+    levels.reverse()  # levels[0] = primera ronda en orden de árbol; última = [final]
+
+    def label(stage):
+        return t["stages_sb"].get(stage, stage.title() if stage.islower() else stage)
+
+    left, right = [], []
+    for lv, stage in zip(levels[:-1], rounds[:-1]):
+        half = len(lv) // 2
+        left.append((label(stage), [_result_card(m, t) for m in lv[:half]]))
+        right.append((label(stage), [_result_card(m, t) for m in lv[half:]]))
+    center = [(label(rounds[-1]), _result_card(levels[-1][0], t))]
+    for s in third:
+        for _, m in ko[ko.stage == s].iterrows():
+            center.append((label(s), _result_card(m, t)))
+    return left, right, center
+
+
+def split_bracket_html(left: list, right: list, center: list) -> str:
+    """Renderiza el cuadro espejado: mitades izquierda/derecha y la final al centro."""
+    n0 = max(len(cards) for _, cards in left)
+    height = max(360, n0 * 100)
+
+    def col(lbl, cards, align="left"):
+        cards_html = "".join(_bracket_card(c) for c in cards)
+        return (f"<div style='flex:1;min-width:0;display:flex;flex-direction:column'>"
+                f"<div style='font-weight:600;font-size:.85rem;text-align:{align};"
+                f"margin-bottom:6px'>{lbl}</div>"
+                f"<div style='flex:1;display:flex;flex-direction:column;"
+                f"justify-content:space-around'>{cards_html}</div></div>")
+
+    cols = "".join(col(l, c) for l, c in left)
+    center_html = "".join(
+        f"<div style='text-align:center;font-weight:700;font-size:.9rem;"
+        f"margin:6px 0 2px'>{'🏆 ' if i == 0 else ''}{lbl}</div>{_bracket_card(card)}"
+        for i, (lbl, card) in enumerate(center))
+    cols += (f"<div style='flex:1.1;min-width:0;display:flex;flex-direction:column;"
+             f"justify-content:center'>{center_html}</div>")
+    cols += "".join(col(l, c, align="right") for l, c in reversed(right))
+    return f"<div style='display:flex;gap:10px;height:{height}px'>{cols}</div>"
+
+
 def results_bracket_rounds(df: pd.DataFrame, t: dict, max_col: int = 12) -> list:
     """Rondas del cuadro desde una tabla de resultados (stage, date, equipos, marcador, penales).
 
@@ -786,12 +897,33 @@ def tab_wc26_overview(t: dict):
         st.error(t["api_err"].format(c=e.response.status_code))
         return
 
-    # Llaves primero (el torneo va por eliminatorias)
+    # Llaves primero. Con el torneo terminado se puede reconstruir el árbol y
+    # mostrar el cuadro espejado; a mitad de torneo se cae al plano (que
+    # además muestra los partidos por jugar).
     if not ms.empty:
-        rounds = wc26_bracket_rounds(ms, t)
-        if rounds:
-            st.subheader(t["bracket"])
-            st.markdown(bracket_html(rounds), unsafe_allow_html=True)
+        api_stages = {"LAST_32": "round of 32", "LAST_16": "round of 16",
+                      "QUARTER_FINALS": "quarter-finals", "SEMI_FINALS": "semi-finals",
+                      "THIRD_PLACE": "third-place match", "FINAL": "final"}
+        fin = ms[(ms.status == "FINISHED") & ms.stage.isin(api_stages)]
+        split = None
+        if len(fin):
+            res = pd.DataFrame({
+                "stage": fin.stage.map(api_stages),
+                "date": fin.utcDate.str[:10],
+                "home_team": fin.homeTeam_name, "away_team": fin.awayTeam_name,
+                "home_score": fin.ft_home.astype(int),
+                "away_score": fin.ft_away.astype(int),
+                "pen_home": fin.get("score_penalties_home"),
+                "pen_away": fin.get("score_penalties_away"),
+            })
+            split = results_bracket_split(res, t)
+        st.subheader(t["bracket"])
+        if split:
+            st.markdown(split_bracket_html(*split), unsafe_allow_html=True)
+        else:
+            rounds = wc26_bracket_rounds(ms, t)
+            if rounds:
+                st.markdown(bracket_html(rounds), unsafe_allow_html=True)
 
     # Fase de grupos con escudos
     st.subheader(t["groups"])
